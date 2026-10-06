@@ -20,6 +20,11 @@ func (m *Model) RenderDisplay(view string) string {
 	if m.ShowWhitespace {
 		source = []rune(value)
 		hidden = make([]bool, len(source))
+		for _, c := range m.chips {
+			for i := c.From; i < c.To && i < len(hidden); i++ {
+				hidden[i] = true
+			}
+		}
 		for _, token := range m.AtomicTokens {
 			if token == "" {
 				continue

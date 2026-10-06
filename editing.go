@@ -36,6 +36,16 @@ func (m *Model) SetPosition(pos int) {
 	m.BreakUndoGroup()
 	r := []rune(m.Model.Value())
 	pos = max(0, min(len(r), pos))
+	old := Position(*m)
+	for _, c := range m.chips {
+		if pos > c.From && pos < c.To {
+			if pos < old {
+				pos = c.From
+			} else {
+				pos = c.To
+			}
+		}
+	}
 	prefix := string(r[:pos])
 	line := strings.Count(prefix, "\n")
 	parts := strings.Split(prefix, "\n")
@@ -69,6 +79,7 @@ func (m *Model) SelectionBounds() (int, int) {
 	}
 	s := m.selection
 	a, b := min(s.anchor, s.head), max(s.anchor, s.head)
+	a, b = expandedRange(m.chips, a, b)
 	if a == b {
 		return a, b
 	}
@@ -108,12 +119,7 @@ func (m *Model) DeleteSelection() bool {
 	if a == b {
 		return false
 	}
-	r := []rune(m.Model.Value())
-	m.selection = nil
-
-	m.Model.SetValue(string(r[:a]) + string(r[b:]))
-	m.SetPosition(a)
-	return true
+	return m.replaceRange(a, b, "") == nil
 }
 
 // Home and End work on the row you can see rather than the line behind it: a
@@ -206,6 +212,15 @@ func (m *Model) ExtendSelection(move func()) {
 
 // HandleKey handles configured editor actions before textarea input dispatch.
 func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
+	m.syncFeatures()
+	if m.Focused() {
+		if handled, cmd := m.featureKey(k); handled {
+			return true, cmd
+		}
+		if handled, cmd := m.chipKey(k); handled {
+			return true, cmd
+		}
+	}
 	if m.Focused() && !k.Paste {
 		if key.Matches(k, m.EditorKeys.Undo) {
 			m.Undo()
@@ -299,17 +314,17 @@ func (m *Model) moveWord(forward bool) {
 	runes := []rune(m.Value())
 	pos := min(len(runes), max(0, Position(*m)))
 	if forward {
-		for pos < len(runes) && unicode.IsSpace(runes[pos]) {
+		for pos < len(runes) && m.wordSpace(runes[pos]) {
 			pos++
 		}
-		for pos < len(runes) && !unicode.IsSpace(runes[pos]) {
+		for pos < len(runes) && !m.wordSpace(runes[pos]) {
 			pos++
 		}
 	} else {
-		for pos > 0 && unicode.IsSpace(runes[pos-1]) {
+		for pos > 0 && m.wordSpace(runes[pos-1]) {
 			pos--
 		}
-		for pos > 0 && !unicode.IsSpace(runes[pos-1]) {
+		for pos > 0 && !m.wordSpace(runes[pos-1]) {
 			pos--
 		}
 	}
@@ -391,6 +406,9 @@ func (m *Model) Point(x, y int) int {
 	return pos
 }
 func (m *Model) HandleMouse(v tea.MouseMsg) bool {
+	m.syncFeatures()
+	m.DismissGhost()
+	m.DismissCompletions()
 	x, y := v.X, v.Y
 	inside := y >= 0 && y < m.Height() && x >= -m.GutterWidth && x < m.Width()-m.GutterWidth
 	if v.Button == tea.MouseButtonWheelUp || v.Button == tea.MouseButtonWheelDown {
@@ -410,7 +428,15 @@ func (m *Model) HandleMouse(v tea.MouseMsg) bool {
 		return false
 	}
 	m.Focus()
-	m.SetPosition(m.Point(max(0, x), y))
+	point := m.Point(max(0, x), y)
+	for _, c := range m.chips {
+		if point >= c.From && point < c.To {
+			m.SetPosition(c.To)
+			m.selection = &selection{value: m.Value(), document: m.DocumentKey, anchor: c.From, head: c.To, dragging: true}
+			return true
+		}
+	}
+	m.SetPosition(point)
 	pos := Position(*m)
 	m.selection = &selection{value: m.Value(), document: m.DocumentKey, anchor: pos, head: pos, dragging: true}
 	return true
@@ -514,4 +540,21 @@ func (m *Model) RenderScrollbar(view string, width int) string {
 		rows[y] = text + strings.Repeat(" ", max(0, width-ansi.StringWidth(text))) + bar
 	}
 	return strings.Join(rows, "\n")
+}
+
+func (m *Model) wordSpace(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune(m.WordSeparators, r)
+}
+func (m *Model) snapPosition(old int) {
+	pos := Position(*m)
+	for _, c := range m.chips {
+		if pos > c.From && pos < c.To {
+			if pos < old {
+				m.SetPosition(c.From)
+			} else {
+				m.SetPosition(c.To)
+			}
+			return
+		}
+	}
 }

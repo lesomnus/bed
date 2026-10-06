@@ -3,11 +3,13 @@ package bed
 import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"slices"
 	"strings"
 	"time"
 )
 
 type editSnapshot struct {
+	chips                []Chip
 	text                 string
 	cursor, anchor, head int
 	selected             bool
@@ -21,7 +23,7 @@ type editHistory struct {
 }
 
 func (m *Model) snapshot() editSnapshot {
-	s := editSnapshot{text: m.Value(), cursor: Position(*m)}
+	s := editSnapshot{text: m.Value(), cursor: Position(*m), chips: slices.Clone(m.chips)}
 	if m.SelectionValid() {
 		s.selected = true
 		s.anchor = m.selection.anchor
@@ -49,7 +51,12 @@ func (m *Model) CanRedo() bool { m.ensureHistory(); return len(m.history.redo) >
 func (m *Model) restoreEdit(s editSnapshot) {
 	m.selection = nil
 	m.layout = nil
+	m.Close()
 	m.Model.SetValue(s.text)
+	m.chips = slices.Clone(s.chips)
+	m.chipVersion++
+	m.featureText = s.text
+	m.featureDocument = m.DocumentKey
 	m.SetPosition(s.cursor)
 	if s.selected {
 		m.selection = &selection{value: s.text, document: m.DocumentKey, anchor: s.anchor, head: s.head}
@@ -91,13 +98,29 @@ func (m *Model) beginEdit(kind string) func() {
 		m.editDepth++
 		return func() { m.editDepth-- }
 	}
+	m.syncFeatures()
 	m.ensureHistory()
 	before := m.snapshot()
+	version := m.chipVersion
 	m.editDepth++
 	return func() {
 		m.editDepth--
+		m.reconcileChips(before, version)
+		m.featureText = m.Value()
+		m.chipCursor = Position(*m)
+		m.featureDocument = m.DocumentKey
 		after := m.snapshot()
-		if before.text == after.text {
+		if before.text != after.text {
+			m.Close()
+		} else {
+			if m.completion != nil && !m.current(m.completion.request) {
+				m.DismissCompletions()
+			}
+			if m.ghost != nil && !m.current(m.ghost.request) {
+				m.DismissGhost()
+			}
+		}
+		if before.text == after.text && slices.Equal(before.chips, after.chips) {
 			return
 		}
 		h := m.history
@@ -125,6 +148,9 @@ func (m *Model) beginEdit(kind string) func() {
 		for i := len(h.undo) - 1; i >= 0; i-- {
 			e := h.undo[i]
 			total += len(e.before.text) + len(e.after.text)
+			for _, c := range append(slices.Clone(e.before.chips), e.after.chips...) {
+				total += len(c.ID) + len(c.Label) + len(c.Text)
+			}
 			if len(h.undo)-i > m.HistoryLimit || total > m.HistoryBytes {
 				h.undo = append([]editEntry(nil), h.undo[i+1:]...)
 				break
