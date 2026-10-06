@@ -61,6 +61,7 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !v.Paste {
 			switch v.String() {
 			case "ctrl+s":
+				m.editor.BreakUndoGroup()
 				m.quitArmed = false
 				if err := m.document.save(m.editor.Value()); err != nil {
 					m.status = "Save failed: " + err.Error()
@@ -119,7 +120,7 @@ func (m app) View() string {
 	if m.dirty() {
 		name += " *"
 	}
-	footer := "Ctrl+S save · Ctrl+Q quit"
+	footer := "Ctrl+S save · Ctrl+Q quit · Ctrl+Z undo · Ctrl+Y redo"
 	if m.status != "" {
 		footer = m.status
 	}

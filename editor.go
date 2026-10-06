@@ -11,6 +11,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Model owns the textarea and its selection/layout state. Configure the embedded
@@ -20,6 +21,13 @@ import (
 type Model struct {
 	textarea.Model
 	EditorKeys EditorKeyMap
+	// HistoryLimit and HistoryBytes bound retained edits (defaults: 100 and 8 MiB).
+	// Set either to zero to disable retention; call ClearHistory to discard it immediately.
+	HistoryLimit, HistoryBytes int
+	UndoGroupDelay             time.Duration
+	history                    *editHistory
+	editDepth                  int
+	historyClock               func() time.Time
 	// DocumentKey invalidates selections when switching between application documents.
 	DocumentKey string
 	// AtomicTokens are labels selected as a whole. Their payloads belong to the app.
@@ -42,6 +50,9 @@ func New() Model {
 	m.KeyMap.WordBackward = key.NewBinding(key.WithKeys("ctrl+left", "alt+left", "alt+b"))
 	m.KeyMap.WordForward = key.NewBinding(key.WithKeys("ctrl+right", "alt+right", "alt+f"))
 	m.EditorKeys = DefaultEditorKeyMap()
+	m.HistoryLimit = 100
+	m.HistoryBytes = 8 << 20
+	m.UndoGroupDelay = 750 * time.Millisecond
 	m.ShowLineNumbers = false
 	m.Gutter = func(line int) string { return fmt.Sprintf("%d ", (line+1)%10) }
 	m.SetPromptFunc(2, func(int) string { return "  " })
@@ -55,8 +66,9 @@ func (m *Model) SetValue(value string) {
 	m.ClearSelection()
 	m.layout = nil
 	m.Model.SetValue(value)
+	m.ClearHistory()
 }
-func (m *Model) Reset() { m.ClearSelection(); m.layout = nil; m.Model.Reset() }
+func (m *Model) Reset() { m.ClearSelection(); m.layout = nil; m.Model.Reset(); m.ClearHistory() }
 
 // Update applies editing keys and mouse events relative to the widget origin.
 // Applications intercept submit/completion keys before calling Update. Hosts
@@ -76,17 +88,29 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 // UpdateText forwards an event to textarea after the host has called HandleKey.
-func (m Model) UpdateText(msg tea.Msg) (Model, tea.Cmd) {
+func (m Model) UpdateText(msg tea.Msg) (Model, tea.Cmd) { cmd := m.updateText(msg); return m, cmd }
+func (m *Model) updateText(msg tea.Msg) tea.Cmd {
+	kind := m.editKind(msg)
+	done := m.beginEdit(kind)
+	defer done()
+	if k, ok := msg.(tea.KeyMsg); ok && m.Focused() {
+		if k.Paste || key.Matches(k, m.KeyMap.InsertNewline) || ((k.Type == tea.KeyRunes || k.Type == tea.KeySpace) && !m.baseBindingMatches(k)) {
+			m.DeleteSelection()
+		} else if kind == "" {
+			m.BreakUndoGroup()
+		}
+	}
+
 	if k, ok := msg.(tea.KeyMsg); ok && !k.Paste && m.Focused() {
 		if key.Matches(k, m.KeyMap.WordBackward, m.KeyMap.WordForward) {
 			m.ClearSelection()
 			m.moveWord(key.Matches(k, m.KeyMap.WordForward))
-			return m, nil
+			return nil
 		}
 	}
 	var cmd tea.Cmd
 	m.Model, cmd = m.Model.Update(msg)
-	return m, cmd
+	return cmd
 }
 
 // View decorates textarea with logical line numbers, whitespace and selection.

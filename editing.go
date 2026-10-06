@@ -33,6 +33,7 @@ func Position(in Model) int {
 	return pos + li.StartColumn + li.ColumnOffset
 }
 func (m *Model) SetPosition(pos int) {
+	m.BreakUndoGroup()
 	r := []rune(m.Model.Value())
 	pos = max(0, min(len(r), pos))
 	prefix := string(r[:pos])
@@ -101,6 +102,8 @@ func (m *Model) SelectedText() string {
 	return string([]rune(m.Model.Value())[a:b])
 }
 func (m *Model) DeleteSelection() bool {
+	done := m.beginEdit("")
+	defer done()
 	a, b := m.SelectionBounds()
 	if a == b {
 		return false
@@ -188,6 +191,7 @@ func GraphemeMove(value string, pos int, forward bool) int {
 // the same code the unshifted key would use, so a selection can never cover
 // something the cursor could not have reached by itself.
 func (m *Model) ExtendSelection(move func()) {
+	m.BreakUndoGroup()
 	if !m.SelectionValid() {
 		m.selection = &selection{value: m.Model.Value(), document: m.DocumentKey, anchor: Position(*m)}
 	}
@@ -202,6 +206,21 @@ func (m *Model) ExtendSelection(move func()) {
 
 // HandleKey handles configured editor actions before textarea input dispatch.
 func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
+	if m.Focused() && !k.Paste {
+		if key.Matches(k, m.EditorKeys.Undo) {
+			m.Undo()
+			return true, nil
+		}
+		if key.Matches(k, m.EditorKeys.Redo) {
+			m.Redo()
+			return true, nil
+		}
+	}
+	done := m.beginEdit(m.editKind(k))
+	defer done()
+	return m.handleKey(k)
+}
+func (m *Model) handleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 	if !m.Focused() {
 		return false, nil
 	}
@@ -236,6 +255,9 @@ func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 		return true, nil
 	}
 	if !m.SelectionValid() {
+		if m.editKind(k) == "" {
+			m.BreakUndoGroup()
+		}
 		return false, nil
 	}
 	a, b := m.SelectionBounds()
@@ -261,9 +283,11 @@ func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 		return true, func() tea.Msg { return CopyMsg(text) }
 	}
 	if k.Paste || match(m.KeyMap.InsertNewline) || ((k.Type == tea.KeyRunes || k.Type == tea.KeySpace) && !m.baseBindingMatches(k)) {
-		m.DeleteSelection()
+		// Replacement is performed with insertion inside UpdateText so one Undo
+		// restores the entire selection rather than only the inserted text.
 	} else {
 		m.ClearSelection()
+		m.BreakUndoGroup()
 	}
 	return false, nil
 }

@@ -17,6 +17,7 @@ Or run from the repository:
 go run ./cmd/bed path/to/file.txt
 ```
 
+Ctrl+Z undoes; Ctrl+Y (or Ctrl+Shift+Z where supported by the terminal) redoes.
 Ctrl+S saves; Ctrl+Q exits. When there are unsaved changes, Ctrl+Q asks for a
 second press to discard them. A `*` marks a modified buffer. A missing file is
 created on the first save. Save errors keep the buffer open.
@@ -28,7 +29,7 @@ temporary file in the same directory followed by rename and checks for changes
 made on disk since opening/saving. Existing symlinks resolve to their target.
 The initial version rejects mixed line endings, unsupported control characters
 and files beyond textarea's 10,000-line limit instead of silently changing them.
-It is a small single-file editor, without undo, syntax highlighting or file tabs.
+It is a small single-file editor, without syntax highlighting or file tabs.
 
 Ctrl+S/Ctrl+Q and file I/O belong to `cmd/bed`, not to the library.
 
@@ -97,6 +98,32 @@ textarea's logical-line navigation), so configure both when replacing those keys
 Printable text input and mouse editing remain available with empty key maps.
 Save, quit and other application actions should be intercepted by the parent
 before calling `editor.Update`.
+
+## Undo and redo
+
+`Undo()` / `Redo()` return whether a group was restored. `CanUndo()` / `CanRedo()`
+report availability. Bindings are `EditorKeys.Undo` and `EditorKeys.Redo` and may
+be remapped or disabled like other actions.
+
+Text, cursor and selection are restored together. Consecutive typing and repeated
+Backspace/Delete group within `UndoGroupDelay` (default 750 ms). Cursor navigation,
+paste, newline, cut and selection replacement separate edits. `BreakUndoGroup()`
+starts a new group for the next edit; the file editor calls it when saving.
+Saving does not clear history, and Undo does not write to disk.
+
+History is bounded by `HistoryLimit` (default 100 groups) and `HistoryBytes`
+(default 8 MiB of retained text snapshots). Oldest groups are discarded first;
+a single oversized edit clears retained history. Set either limit to zero to
+stop retaining new edits. `ClearHistory()` immediately discards Undo and Redo.
+History is in memory and belongs to one document; a changed `DocumentKey`,
+`SetValue` or `Reset` clears it. A new edit after Undo discards the redo branch.
+
+`InsertString`, `InsertRune`, `DeleteSelection` and the normal Update pipeline
+record edits. `SetValue` is for loading/replacing a document, not an undoable edit.
+Direct mutations through the embedded `textarea.Model` bypass recording and
+invalidate history when detected. App-owned chip payloads and decorations are
+not part of text history. The split `HandleKey` / `UpdateText` pipeline is also
+supported; forward unhandled input to `UpdateText` to commit replacement edits.
 
 ## Composition
 

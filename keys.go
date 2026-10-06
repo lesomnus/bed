@@ -6,6 +6,7 @@ import "github.com/charmbracelet/bubbles/key"
 // actions remain configurable through Model.KeyMap. A zero map disables these
 // actions; individual bindings support SetKeys and SetEnabled.
 type EditorKeyMap struct {
+	Undo, Redo                                    key.Binding
 	SelectLeft, SelectRight, SelectUp, SelectDown key.Binding
 	SelectWordLeft, SelectWordRight               key.Binding
 	SelectRowStart, SelectRowEnd                  key.Binding
@@ -17,6 +18,7 @@ type EditorKeyMap struct {
 func DefaultEditorKeyMap() EditorKeyMap {
 	bind := func(s string) key.Binding { return key.NewBinding(key.WithKeys(s)) }
 	return EditorKeyMap{
+		Undo: bind("ctrl+z"), Redo: key.NewBinding(key.WithKeys("ctrl+y", "ctrl+shift+z")),
 		SelectLeft: bind("shift+left"), SelectRight: bind("shift+right"),
 		SelectUp: bind("shift+up"), SelectDown: bind("shift+down"),
 		SelectWordLeft: bind("ctrl+shift+left"), SelectWordRight: bind("ctrl+shift+right"),

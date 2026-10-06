@@ -148,3 +148,39 @@ func TestSaveFailureKeepsBuffer(t *testing.T) {
 		t.Fatal("failed save lost buffer")
 	}
 }
+
+func TestUndoRedoAroundSavedFile(t *testing.T) {
+	path := fixture(t, "original")
+	m, err := newApp(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("new ")})
+	m = next.(app)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = next.(app)
+	if m.dirty() {
+		t.Fatal("saved buffer is dirty")
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlZ})
+	m = next.(app)
+	if !m.dirty() || m.editor.Value() != "original" {
+		t.Fatal("undo did not restore original")
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != "new original" {
+		t.Fatal("undo unexpectedly wrote disk")
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlY})
+	m = next.(app)
+	if m.dirty() || m.editor.Value() != "new original" {
+		t.Fatal("redo did not restore saved state")
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("after")})
+	m = next.(app)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlZ})
+	m = next.(app)
+	if m.dirty() {
+		t.Fatal("edit after save merged with saved edit")
+	}
+}
