@@ -8,7 +8,12 @@ import (
 
 // FollowCursor returns a manually scrolled viewport to the editing cursor.
 // Keyboard editing/navigation calls this automatically; wheel scrolling does not.
-func (m *Model) FollowCursor() { m.detached = false }
+func (m *Model) FollowCursor() {
+	if m.detached {
+		m.Model, _ = m.Model.Update(nil)
+	}
+	m.detached = false
+}
 
 // RawView renders the viewport before bed's decorations. Hosts composing their
 // own rendering pipeline must use this instead of the embedded textarea.View.

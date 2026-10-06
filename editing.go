@@ -4,6 +4,7 @@ package bed
 import (
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
@@ -62,6 +63,9 @@ func (m *Model) SetPosition(pos int) {
 		m.Model.CursorDown()
 	}
 	m.Model.SetCursor(column)
+	// Populate viewport content before repositioning; a newly loaded document
+	// may not have been rendered yet.
+	_ = m.Model.View()
 	m.Model, _ = m.Model.Update(nil)
 }
 
@@ -359,7 +363,13 @@ func (m *Model) Rows() []Row {
 	var rows []Row
 	base := 0
 	for line, text := range strings.Split(value, "\n") {
-		probe := m.Model
+		// A shallow textarea copy shares its viewport: SetValue would scroll
+		// the live editor to the top while merely measuring line wrapping.
+		probe := textarea.New()
+		probe.CharLimit, probe.MaxWidth = 0, 0
+		probe.SetPromptFunc(0, func(int) string { return "" })
+		probe.ShowLineNumbers = false
+		probe.SetWidth(m.Model.Width())
 		probe.SetValue(text)
 		length := utf8.RuneCountInString(text)
 		for start := 0; start <= length; {

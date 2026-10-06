@@ -130,3 +130,21 @@ func TestViewportWrappedRowsResizeAndIndependentEditors(t *testing.T) {
 		t.Fatal("document reset")
 	}
 }
+
+func TestLayoutQueriesDoNotMoveLiveViewport(t *testing.T) {
+	m := testEditor()
+	m.SetValue("zero\none\ntwo\nthree\nfour\nfive\nsix")
+	m.SetPosition(len([]rune(m.Value())))
+	before := m.Model.View()
+	m.Rows()
+	m.Point(0, 0)
+	if after := m.Model.View(); before != after {
+		t.Fatal("layout changed live viewport", ansi.Strip(before), ansi.Strip(after))
+	}
+	m.Scroll(false)
+	m.View()
+	m.FollowCursor()
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "six") {
+		t.Fatal("FollowCursor did not reveal cursor", view)
+	}
+}
