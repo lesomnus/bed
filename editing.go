@@ -2,6 +2,7 @@
 package bed
 
 import (
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -369,6 +370,8 @@ func (m *Model) Rows() []Row {
 }
 func (m *Model) ScrollOffset(rows []Row) int {
 	probe := m.Model
+	// Layout probes must not cancel the live cursor timer shared by the copy.
+	probe.Cursor.SetMode(cursor.CursorStatic)
 	probe.Focus()
 	probe.Cursor.Blink = false
 	probe.Cursor.Style = cursorProbeStyle
