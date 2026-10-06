@@ -77,6 +77,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // UpdateText forwards an event to textarea after the host has called HandleKey.
 func (m Model) UpdateText(msg tea.Msg) (Model, tea.Cmd) {
+	if k, ok := msg.(tea.KeyMsg); ok && !k.Paste && m.Focused() {
+		if key.Matches(k, m.KeyMap.WordBackward, m.KeyMap.WordForward) {
+			m.ClearSelection()
+			m.moveWord(key.Matches(k, m.KeyMap.WordForward))
+			return m, nil
+		}
+	}
 	var cmd tea.Cmd
 	m.Model, cmd = m.Model.Update(msg)
 	return m, cmd

@@ -3,11 +3,11 @@ package bed
 
 import (
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -268,20 +268,28 @@ func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 	return false, nil
 }
 
-// Selection invokes textarea's word-motion implementation independently of the
-// key assigned to ordinary word movement (which may even be disabled).
+// moveWord uses bounded rune offsets rather than textarea.wordLeft, which can
+// loop forever when only whitespace precedes the cursor at the document start.
+// Both ordinary word motion and word selection use these same boundaries.
 func (m *Model) moveWord(forward bool) {
-	saved := m.Model.KeyMap
-	m.Model.KeyMap = textarea.KeyMap{}
-	direction := tea.KeyCtrlLeft
+	runes := []rune(m.Value())
+	pos := min(len(runes), max(0, Position(*m)))
 	if forward {
-		direction = tea.KeyCtrlRight
-		m.Model.KeyMap.WordForward = key.NewBinding(key.WithKeys("ctrl+right"))
+		for pos < len(runes) && unicode.IsSpace(runes[pos]) {
+			pos++
+		}
+		for pos < len(runes) && !unicode.IsSpace(runes[pos]) {
+			pos++
+		}
 	} else {
-		m.Model.KeyMap.WordBackward = key.NewBinding(key.WithKeys("ctrl+left"))
+		for pos > 0 && unicode.IsSpace(runes[pos-1]) {
+			pos--
+		}
+		for pos > 0 && !unicode.IsSpace(runes[pos-1]) {
+			pos--
+		}
 	}
-	m.Model, _ = m.Model.Update(tea.KeyMsg{Type: direction})
-	m.Model.KeyMap = saved
+	m.SetPosition(pos)
 }
 
 func (m *Model) baseBindingMatches(k tea.KeyMsg) bool {
