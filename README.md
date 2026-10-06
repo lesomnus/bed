@@ -4,6 +4,34 @@ A Bubble Tea text editor extracted from [cxz](https://github.com/lesomnus/cxz).
 Built on `bubbles/textarea`, with no dependency on cxz, its sessions, RPCs or AI providers.
 Requires Go 1.24.2 or newer. The API is experimental.
 
+## Edit a file
+
+```sh
+go install github.com/lesomnus/bed/cmd/bed@latest
+bed path/to/file.txt
+```
+
+Or run from the repository:
+
+```sh
+go run ./cmd/bed path/to/file.txt
+```
+
+Ctrl+S saves; Ctrl+Q exits. When there are unsaved changes, Ctrl+Q asks for a
+second press to discard them. A `*` marks a modified buffer. A missing file is
+created on the first save. Save errors keep the buffer open.
+
+The program supports UTF-8 text with LF or CRLF endings and preserves the final
+newline, tabs and existing file permissions. Tabs appear as a single `⇥` cell
+and are written back as real tab characters; Tab inserts one. Saving uses a
+temporary file in the same directory followed by rename and checks for changes
+made on disk since opening/saving. Existing symlinks resolve to their target.
+The initial version rejects mixed line endings, unsupported control characters
+and files beyond textarea's 10,000-line limit instead of silently changing them.
+It is a small single-file editor, without undo, syntax highlighting or file tabs.
+
+Ctrl+S/Ctrl+Q and file I/O belong to `cmd/bed`, not to the library.
+
 ## Use
 
 ```go
@@ -39,6 +67,36 @@ submission, focus, resize and global shortcuts. Intercept Enter before `Update`
 when Enter should submit instead of inserting a newline. Enable Bubble Tea mouse
 motion reporting for drag selection and translate mouse events to the editor's
 origin before passing them to `Update`.
+
+## Key bindings
+
+The library ships defaults, but does not require fixed shortcuts. Basic editing
+uses `editor.KeyMap` (textarea's key map); selection, visible-row navigation, cut
+and whitespace display use `editor.EditorKeys`. Both use Bubbles `key.Binding`:
+
+```go
+editor.KeyMap.WordBackward.SetKeys("ctrl+left", "alt+b")
+editor.EditorKeys.SelectWordLeft.SetKeys("ctrl+shift+left")
+editor.EditorKeys.ToggleWhitespace.SetKeys("f4")
+editor.EditorKeys.Cut.SetEnabled(false)
+```
+
+To supply only your own bindings, clear both maps and enable the actions needed:
+
+```go
+editor.KeyMap = textarea.KeyMap{}
+editor.EditorKeys = bed.EditorKeyMap{}
+editor.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("enter"))
+editor.EditorKeys.SelectLeft = key.NewBinding(key.WithKeys("shift+left"))
+```
+
+Selection invokes word motion independently of the ordinary word-motion binding.
+Editor bindings run before textarea bindings; avoid assigning the same key to
+unrelated actions. Home/End exist in both maps (bed's visible-row navigation and
+textarea's logical-line navigation), so configure both when replacing those keys.
+Printable text input and mouse editing remain available with empty key maps.
+Save, quit and other application actions should be intercepted by the parent
+before calling `editor.Update`.
 
 ## Composition
 

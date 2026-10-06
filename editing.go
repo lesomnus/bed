@@ -2,6 +2,8 @@
 package bed
 
 import (
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
@@ -198,41 +200,39 @@ func (m *Model) ExtendSelection(move func()) {
 
 }
 
+// HandleKey handles configured editor actions before textarea input dispatch.
 func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 	if !m.Focused() {
 		return false, nil
 	}
-	if !k.Paste && k.String() == "alt+w" {
+	match := func(bindings ...key.Binding) bool { return !k.Paste && key.Matches(k, bindings...) }
+	if match(m.EditorKeys.ToggleWhitespace) {
 		m.ShowWhitespace = !m.ShowWhitespace
 		return true, nil
 	}
-	// Word-wise selection reuses the widget's own word motion, so what
-	// ctrl+left selects is exactly what ctrl+left would have walked over.
-	moves := map[string]tea.KeyType{
-		"shift+left": tea.KeyLeft, "shift+right": tea.KeyRight, "shift+up": tea.KeyUp, "shift+down": tea.KeyDown,
-		"ctrl+shift+left": tea.KeyCtrlLeft, "ctrl+shift+right": tea.KeyCtrlRight,
+	moves := []struct {
+		binding key.Binding
+		move    func()
+	}{
+		{m.EditorKeys.SelectLeft, func() { m.SetPosition(GraphemeMove(m.Value(), Position(*m), false)) }},
+		{m.EditorKeys.SelectRight, func() { m.SetPosition(GraphemeMove(m.Value(), Position(*m), true)) }},
+		{m.EditorKeys.SelectUp, func() { m.Model.CursorUp() }},
+		{m.EditorKeys.SelectDown, func() { m.Model.CursorDown() }},
+		{m.EditorKeys.SelectWordLeft, func() { m.moveWord(false) }},
+		{m.EditorKeys.SelectWordRight, func() { m.moveWord(true) }},
+		{m.EditorKeys.SelectRowStart, func() { m.RowEdge(false) }},
+		{m.EditorKeys.SelectRowEnd, func() { m.RowEdge(true) }},
 	}
-	if direction, ok := moves[k.String()]; ok && !k.Paste {
-		m.ExtendSelection(func() {
-			if direction == tea.KeyLeft || direction == tea.KeyRight {
-				m.SetPosition(GraphemeMove(m.Model.Value(), Position(*m), direction == tea.KeyRight))
-			} else {
-				m.Model, _ = m.Model.Update(tea.KeyMsg{Type: direction})
-			}
-		})
-		return true, nil
+	for _, move := range moves {
+		if match(move.binding) {
+			m.ExtendSelection(move.move)
+			m.Model, _ = m.Model.Update(nil)
+			return true, nil
+		}
 	}
-	// Shift turns the edge keys into a selection to the same place they move to,
-	// including the second press that steps to the neighbouring row.
-	if forward, ok := map[string]bool{"shift+home": false, "shift+end": true}[k.String()]; ok && !k.Paste {
-		m.ExtendSelection(func() { m.RowEdge(forward) })
-		return true, nil
-	}
-	if edge := k.String(); (edge == "home" || edge == "end") && !k.Paste {
-		m.selection = nil
-
-		m.RowEdge(edge == "end")
-
+	if match(m.EditorKeys.RowStart, m.EditorKeys.RowEnd) {
+		m.ClearSelection()
+		m.RowEdge(match(m.EditorKeys.RowEnd))
 		return true, nil
 	}
 	if !m.SelectionValid() {
@@ -240,39 +240,56 @@ func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 	}
 	a, b := m.SelectionBounds()
 	if a == b {
-		m.selection = nil
+		m.ClearSelection()
 		return false, nil
 	}
-	switch k.String() {
-	case "left", "right":
-		if !k.Paste {
-			pos := a
-			if k.Type == tea.KeyRight {
-				pos = b
-			}
-			m.selection = nil
-			m.SetPosition(pos)
-
-			return true, nil
+	switch {
+	case match(m.KeyMap.CharacterBackward, m.KeyMap.CharacterForward):
+		pos := a
+		if match(m.KeyMap.CharacterForward) {
+			pos = b
 		}
-	case "backspace", "delete":
-		if !k.Paste {
-			m.DeleteSelection()
-			return true, nil
-		}
-	case "ctrl+x":
-		if !k.Paste {
-			text := m.SelectedText()
-			m.DeleteSelection()
-			return true, func() tea.Msg { return CopyMsg(text) }
-		}
+		m.ClearSelection()
+		m.SetPosition(pos)
+		return true, nil
+	case match(m.KeyMap.DeleteCharacterBackward, m.KeyMap.DeleteCharacterForward):
+		m.DeleteSelection()
+		return true, nil
+	case match(m.EditorKeys.Cut):
+		text := m.SelectedText()
+		m.DeleteSelection()
+		return true, func() tea.Msg { return CopyMsg(text) }
 	}
-	if k.Type == tea.KeyRunes || k.Type == tea.KeySpace || k.Type == tea.KeyEnter || k.String() == "alt+enter" || k.String() == "ctrl+j" || k.Paste {
+	if k.Paste || match(m.KeyMap.InsertNewline) || ((k.Type == tea.KeyRunes || k.Type == tea.KeySpace) && !m.baseBindingMatches(k)) {
 		m.DeleteSelection()
 	} else {
-		m.selection = nil
+		m.ClearSelection()
 	}
 	return false, nil
+}
+
+// Selection invokes textarea's word-motion implementation independently of the
+// key assigned to ordinary word movement (which may even be disabled).
+func (m *Model) moveWord(forward bool) {
+	saved := m.Model.KeyMap
+	m.Model.KeyMap = textarea.KeyMap{}
+	direction := tea.KeyCtrlLeft
+	if forward {
+		direction = tea.KeyCtrlRight
+		m.Model.KeyMap.WordForward = key.NewBinding(key.WithKeys("ctrl+right"))
+	} else {
+		m.Model.KeyMap.WordBackward = key.NewBinding(key.WithKeys("ctrl+left"))
+	}
+	m.Model, _ = m.Model.Update(tea.KeyMsg{Type: direction})
+	m.Model.KeyMap = saved
+}
+
+func (m *Model) baseBindingMatches(k tea.KeyMsg) bool {
+	b := m.KeyMap
+	return key.Matches(k, b.CharacterBackward, b.CharacterForward, b.DeleteAfterCursor, b.DeleteBeforeCursor,
+		b.DeleteCharacterBackward, b.DeleteCharacterForward, b.DeleteWordBackward, b.DeleteWordForward,
+		b.InsertNewline, b.LineEnd, b.LineNext, b.LinePrevious, b.LineStart, b.Paste, b.WordBackward, b.WordForward,
+		b.InputBegin, b.InputEnd, b.UppercaseWordForward, b.LowercaseWordForward, b.CapitalizeWordForward, b.TransposeCharacterBackward)
 }
 
 // Use textarea's own wrapping metadata rather than assuming hard wrapping.
