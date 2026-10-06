@@ -155,3 +155,55 @@ func TestScrollbarAndWheel(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultControlWordNavigation(t *testing.T) {
+	m := testEditor()
+	m.SetValue("one two three")
+	m.SetPosition(13)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlLeft})
+	if Position(m) != 8 {
+		t.Fatalf("ctrl+left: got %d want 8", Position(m))
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlRight})
+	if Position(m) != 13 {
+		t.Fatalf("ctrl+right: got %d want 13", Position(m))
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlShiftLeft})
+	if m.SelectedText() != "three" {
+		t.Fatalf("ctrl+shift+left: %q", m.SelectedText())
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlShiftRight})
+	if m.SelectedText() != "" || Position(m) != 13 {
+		t.Fatal("reverse word selection did not collapse")
+	}
+	m.SetPosition(8)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlShiftRight})
+	if m.SelectedText() != "three" {
+		t.Fatalf("ctrl+shift+right: %q", m.SelectedText())
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("last")})
+	if m.Value() != "one two last" {
+		t.Fatal(m.Value())
+	}
+}
+
+func TestDefaultAltWordNavigationPreserved(t *testing.T) {
+	for _, left := range []tea.KeyMsg{{Type: tea.KeyLeft, Alt: true}, {Type: tea.KeyRunes, Runes: []rune("b"), Alt: true}} {
+		m := testEditor()
+		m.SetValue("one two")
+		m.SetPosition(7)
+		m, _ = m.Update(left)
+		if Position(m) != 4 {
+			t.Fatalf("%s moved to %d", left.String(), Position(m))
+		}
+	}
+	for _, right := range []tea.KeyMsg{{Type: tea.KeyRight, Alt: true}, {Type: tea.KeyRunes, Runes: []rune("f"), Alt: true}} {
+		m := testEditor()
+		m.SetValue("one two")
+		m.SetPosition(4)
+		m, _ = m.Update(right)
+		if Position(m) != 7 {
+			t.Fatalf("%s moved to %d", right.String(), Position(m))
+		}
+	}
+}

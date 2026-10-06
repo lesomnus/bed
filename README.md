@@ -25,6 +25,7 @@ Run a complete example with two independent editors:
 go run ./examples/two-editors
 ```
 
+- Ctrl+Left/Right move by words (Alt+Left/Right and Alt+B/F also work).
 - Shift+arrows and Ctrl+Shift+Left/Right extend selection.
 - Home/End target visible wrapped rows; Shift extends selection to those edges.
 - Mouse click moves the cursor; drag selects; wheel moves through long documents.

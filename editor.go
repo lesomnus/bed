@@ -2,6 +2,7 @@ package bed
 
 import (
 	"fmt"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -37,6 +38,8 @@ type CopyMsg string
 
 func New() Model {
 	m := Model{Model: textarea.New(), GutterWidth: 2, SelectionColor: 240}
+	m.KeyMap.WordBackward = key.NewBinding(key.WithKeys("ctrl+left", "alt+left", "alt+b"))
+	m.KeyMap.WordForward = key.NewBinding(key.WithKeys("ctrl+right", "alt+right", "alt+f"))
 	m.ShowLineNumbers = false
 	m.Gutter = func(line int) string { return fmt.Sprintf("%d ", (line+1)%10) }
 	m.SetPromptFunc(2, func(int) string { return "  " })
