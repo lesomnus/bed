@@ -119,7 +119,7 @@ func TestTabsOnInputAndCRLFPaste(t *testing.T) {
 	m = next.(app)
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a\r\n\tb"), Paste: true})
 	m = next.(app)
-	if got := string(m.document.decode(m.editor.Value())); got != "\ta\n\tb" {
+	if got := string(m.document.decode(m.editor.Value())); got != "    a\n\tb" {
 		t.Fatalf("lost tabs: %q", got)
 	}
 }
@@ -182,5 +182,34 @@ func TestUndoRedoAroundSavedFile(t *testing.T) {
 	m = next.(app)
 	if m.dirty() {
 		t.Fatal("edit after save merged with saved edit")
+	}
+}
+
+func TestLineEditingPreservesTabsAndSaveUndo(t *testing.T) {
+	path := fixture(t, "\tfirst\nsecond")
+	m, err := newApp(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.editor.SetPosition(6)
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(app)
+	if got := string(m.document.decode(m.editor.Value())); got != "\tfirst\n\t\nsecond" {
+		t.Fatal(got)
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = next.(app)
+	saved, _ := os.ReadFile(path)
+	if string(saved) != "\tfirst\n\t\nsecond" {
+		t.Fatal(string(saved))
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlZ})
+	m = next.(app)
+	if !m.dirty() || string(m.document.decode(m.editor.Value())) != "\tfirst\nsecond" {
+		t.Fatal("undo after save")
+	}
+	disk, _ := os.ReadFile(path)
+	if !bytes.Equal(saved, disk) {
+		t.Fatal("undo wrote disk")
 	}
 }

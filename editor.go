@@ -19,7 +19,19 @@ import (
 // Like textarea, shallow copies are intended for Bubble Tea Update, not for
 // maintaining independent documents; create a new Model for each editor.
 type Model struct {
-	chipCursor int
+	// IndentCharacters identifies leading indentation; hosts may add an encoded tab rune.
+	IndentCharacters string
+	// TabWidth controls space-based tab stops; AutoIndent repeats leading spaces.
+	TabWidth     int
+	AutoIndent   bool
+	viewTop      int
+	detached     bool
+	viewDocument string
+	click        mouseClick
+	// MultiClickInterval groups consecutive clicks at the same cell; zero disables.
+	MultiClickInterval time.Duration
+	mouseClock         func() time.Time
+	chipCursor         int
 	textarea.Model
 	EditorKeys                                                      EditorKeyMap
 	CompletionProvider                                              CompletionProvider
@@ -64,6 +76,10 @@ func New() Model {
 	m.KeyMap.WordBackward = key.NewBinding(key.WithKeys("ctrl+left", "alt+left", "alt+b"))
 	m.KeyMap.WordForward = key.NewBinding(key.WithKeys("ctrl+right", "alt+right", "alt+f"))
 	m.EditorKeys = DefaultEditorKeyMap()
+	m.TabWidth = 4
+	m.MultiClickInterval = 400 * time.Millisecond
+	m.AutoIndent = true
+	m.IndentCharacters = " "
 	m.HistoryLimit = 100
 	m.HistoryBytes = 8 << 20
 	m.UndoGroupDelay = 750 * time.Millisecond
@@ -86,6 +102,7 @@ func (m *Model) Blur() { m.Close(); m.Model.Blur() }
 func (m *Model) ClearSelection() { m.selection = nil }
 func (m *Model) SetValue(value string) {
 	m.ClearSelection()
+	m.detached = false
 	m.layout = nil
 	m.Model.SetValue(value)
 	m.Close()
@@ -115,7 +132,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		v.X -= m.GutterWidth
-		m.HandleMouse(v)
+		handled := m.HandleMouse(v)
+		if handled && v.Button == tea.MouseButtonLeft && v.Action == tea.MouseActionPress {
+			return m, m.Focus()
+		}
 		return m, nil
 	}
 	return m.UpdateText(msg)
@@ -128,11 +148,14 @@ func (m Model) UpdateText(msg tea.Msg) (Model, tea.Cmd) {
 	return m, tea.Batch(cmd, m.afterInput(msg, had))
 }
 func (m *Model) updateText(msg tea.Msg) tea.Cmd {
+	if _, ok := msg.(tea.KeyMsg); ok && m.Focused() {
+		m.FollowCursor()
+	}
 	kind := m.editKind(msg)
 	done := m.beginEdit(kind)
 	defer done()
 	if k, ok := msg.(tea.KeyMsg); ok && m.Focused() {
-		if k.Paste || key.Matches(k, m.KeyMap.InsertNewline) || ((k.Type == tea.KeyRunes || k.Type == tea.KeySpace) && !m.baseBindingMatches(k)) {
+		if k.Paste || (key.Matches(k, m.KeyMap.InsertNewline) && !m.AutoIndent) || ((k.Type == tea.KeyRunes || k.Type == tea.KeySpace) && !m.baseBindingMatches(k)) {
 			m.DeleteSelection()
 		} else if kind == "" {
 			m.BreakUndoGroup()
@@ -140,6 +163,12 @@ func (m *Model) updateText(msg tea.Msg) tea.Cmd {
 	}
 
 	if k, ok := msg.(tea.KeyMsg); ok && !k.Paste && m.Focused() {
+		if key.Matches(k, m.KeyMap.InsertNewline) && m.AutoIndent {
+			if err := m.InsertNewline(); err != nil {
+				return func() tea.Msg { return EditErrorMsg{err} }
+			}
+			return nil
+		}
 		if key.Matches(k, m.KeyMap.WordBackward, m.KeyMap.WordForward) {
 			m.ClearSelection()
 			m.moveWord(key.Matches(k, m.KeyMap.WordForward))
@@ -163,7 +192,7 @@ func (m *Model) updateText(msg tea.Msg) tea.Cmd {
 // Use RenderScrollbar(View(), width) when reserving an extra scrollbar column.
 func (m Model) View() string {
 	m.syncFeatures()
-	return m.RenderCompletions(m.RenderGhost(m.RenderSelection(m.RenderChips(m.RenderDisplay(m.Model.View())))))
+	return m.RenderCompletions(m.RenderGhost(m.RenderSelection(m.RenderChips(m.RenderDisplay(m.RawView())))))
 }
 
 var sgrPattern = regexp.MustCompile("\x1b\\[([0-9;]*)m")

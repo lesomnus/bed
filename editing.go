@@ -13,9 +13,10 @@ import (
 )
 
 type selection struct {
-	value, document string
-	anchor, head    int
-	dragging        bool
+	value, document               string
+	anchor, head                  int
+	dragging                      bool
+	mouseMode, mouseFrom, mouseTo int
 }
 type Row struct{ Start, End, Line, Column int }
 type layout struct {
@@ -34,6 +35,7 @@ func Position(in Model) int {
 	return pos + li.StartColumn + li.ColumnOffset
 }
 func (m *Model) SetPosition(pos int) {
+	m.FollowCursor()
 	m.BreakUndoGroup()
 	r := []rune(m.Model.Value())
 	pos = max(0, min(len(r), pos))
@@ -215,6 +217,8 @@ func (m *Model) ExtendSelection(move func()) {
 func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 	m.syncFeatures()
 	if m.Focused() {
+		m.FollowCursor()
+		m.click = mouseClick{}
 		if handled, cmd := m.featureKey(k); handled {
 			return true, cmd
 		}
@@ -230,6 +234,11 @@ func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 		if key.Matches(k, m.EditorKeys.Redo) {
 			m.Redo()
 			return true, nil
+		}
+	}
+	if m.Focused() {
+		if handled, cmd := m.lineKey(k); handled {
+			return handled, cmd
 		}
 	}
 	done := m.beginEdit(m.editKind(k))
@@ -369,6 +378,9 @@ func (m *Model) Rows() []Row {
 	return rows
 }
 func (m *Model) ScrollOffset(rows []Row) int {
+	if m.detached && m.viewDocument == m.DocumentKey {
+		return min(m.viewTop, max(0, len(rows)-m.Height()))
+	}
 	probe := m.Model
 	// Layout probes must not cancel the live cursor timer shared by the copy.
 	probe.Cursor.SetMode(cursor.CursorStatic)
@@ -420,7 +432,20 @@ func (m *Model) HandleMouse(v tea.MouseMsg) bool {
 	dragging := m.SelectionValid() && m.selection.dragging
 	if dragging && (v.Action == tea.MouseActionMotion || v.Action == tea.MouseActionRelease) {
 		s := m.selection
-		m.SetPosition(m.Point(max(0, x), y))
+		point := m.Point(max(0, x), y)
+		a, b := m.mouseRange(point, s.mouseMode)
+		if s.mouseMode > 1 {
+			if point < s.mouseFrom {
+				s.anchor = s.mouseTo
+				point = a
+			} else {
+				s.anchor = s.mouseFrom
+				point = b
+			}
+		}
+		top, detached := m.ScrollOffset(m.Rows()), m.detached
+		m.SetPosition(point)
+		m.viewTop, m.detached, m.viewDocument = top, detached, m.DocumentKey
 		s.head = Position(*m)
 		if v.Action == tea.MouseActionRelease {
 			s.dragging = false
@@ -430,18 +455,26 @@ func (m *Model) HandleMouse(v tea.MouseMsg) bool {
 	if v.Action != tea.MouseActionPress || v.Button != tea.MouseButtonLeft || !inside {
 		return false
 	}
-	m.Focus()
 	point := m.Point(max(0, x), y)
+	top, detached := m.ScrollOffset(m.Rows()), m.detached
+	defer func() { m.viewTop, m.detached, m.viewDocument = top, detached, m.DocumentKey }()
+	// The event-loop owner dispatches Focus's timer command. Avoid creating and
+	// discarding a timer here for hosts using HandleMouse directly.
+	mode := m.clickCount(x, y)
+	previousMode := m.Cursor.Mode()
+	m.Cursor.SetMode(cursor.CursorStatic)
+	m.Model.Focus()
+	m.Cursor.SetMode(previousMode)
 	for _, c := range m.chips {
-		if point >= c.From && point < c.To {
+		if mode < 3 && point >= c.From && point < c.To {
 			m.SetPosition(c.To)
 			m.selection = &selection{value: m.Value(), document: m.DocumentKey, anchor: c.From, head: c.To, dragging: true}
 			return true
 		}
 	}
-	m.SetPosition(point)
-	pos := Position(*m)
-	m.selection = &selection{value: m.Value(), document: m.DocumentKey, anchor: pos, head: pos, dragging: true}
+	a, b := m.mouseRange(point, mode)
+	m.SetPosition(b)
+	m.selection = &selection{value: m.Value(), document: m.DocumentKey, anchor: a, head: Position(*m), dragging: true, mouseMode: mode, mouseFrom: a, mouseTo: b}
 	return true
 }
 func (m *Model) RenderSelection(view string) string {
@@ -477,31 +510,22 @@ func (m *Model) RenderSelection(view string) string {
 	return strings.Join(rows, "\n")
 }
 
-// Scroll moves the view by rows under the wheel. The widget has no
-// scroll of its own -- its view follows the cursor -- so the cursor is what
-// moves, which also keeps the scrollbar, the selection and the cursor reading
-// one position rather than three. A draft that fits has nothing to scroll, and
-// says so, rather than swallowing the event.
+// Scroll moves only the viewport, retaining the cursor and selection.
 func (m *Model) Scroll(down bool) bool {
 	rows := m.Rows()
-	if len(rows) <= m.Model.Height() {
-		return false
-	}
+	top := m.ScrollOffset(rows)
 	step := -wheelRows
 	if down {
 		step = wheelRows
 	}
-	pos := Position(*m)
-	from := RowIndex(rows, pos)
-	to := max(0, min(len(rows)-1, from+step))
-	if to == from {
+	next := max(0, min(max(0, len(rows)-m.Height()), top+step))
+	if next == top {
 		return false
 	}
-	m.selection = nil
-
-	// Hold the column where there is one to hold, the way an arrow key does.
-	m.SetPosition(min(rows[to].Start+pos-rows[from].Start, RowEnd(rows, to)))
-
+	m.click = mouseClick{}
+	m.viewTop = next
+	m.detached = true
+	m.viewDocument = m.DocumentKey
 	return true
 }
 

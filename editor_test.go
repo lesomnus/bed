@@ -146,7 +146,7 @@ func TestScrollbarAndWheel(t *testing.T) {
 	m := testEditor()
 	m.SetValue("one\ntwo\nthree\nfour\nfive\nsix")
 	m.SetPosition(0)
-	if !m.Scroll(true) || Position(m) == 0 {
+	if !m.Scroll(true) || Position(m) != 0 || m.ScrollOffset(m.Rows()) == 0 {
 		t.Fatal("wheel did not move")
 	}
 	for _, line := range strings.Split(m.RenderScrollbar(m.View(), 25), "\n") {

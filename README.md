@@ -24,7 +24,10 @@ created on the first save. Save errors keep the buffer open.
 
 The program supports UTF-8 text with LF or CRLF endings and preserves the final
 newline, tabs and existing file permissions. Tabs appear as a single `⇥` cell
-and are written back as real tab characters; Tab inserts one. Saving uses a
+and are written back as real tab characters. Tab inserts spaces to the next
+soft-tab stop (four columns by default); pasted literal tabs are preserved.
+Existing literal tabs keep the single-cell display; `TabWidth` controls soft
+tab insertion/indentation, not their display width. Saving uses a
 temporary file in the same directory followed by rename and checks for changes
 made on disk since opening/saving. Existing symlinks resolve to their target.
 The initial version rejects mixed line endings, unsupported control characters
@@ -151,15 +154,19 @@ For existing applications with layered input dispatch/rendering:
   with `UpdateText`. Forward the returned command to Bubble Tea as usual.
 - `HandleMouse` takes coordinates relative to the **text area**, excluding the
   gutter. `Update` instead expects coordinates relative to the whole widget.
-- `RenderDisplay` and `RenderSelection` decorate the embedded textarea's `View`,
+- `RenderDisplay` and `RenderSelection` decorate `RawView()`,
   allowing the host to apply chip/ghost decorations in a controlled order.
 - `RenderScrollbar(view, width)` renders a bar in the final column. Reserve one
   extra column in the parent layout so the bar does not overwrite text.
 - `Position`, `SetPosition`, `Rows`, `Point` and selection bounds use rune offsets;
   mouse positions and widths use terminal cells.
 
-The wheel currently moves the cursor because textarea's viewport follows it;
-this is not an independent scrollback viewport. Avoid independently styling the
+The wheel scrolls the viewport without moving the cursor or clearing selection.
+Typing/navigation and `SetPosition` return to the cursor; `FollowCursor()` does
+so explicitly. Clicks and selections use the visible scrolled rows. Hosts with
+custom rendering must start with `RawView()` rather than `Model.View()` to honor
+this viewport. After a handled left press, dispatch the command returned by
+`Focus()`; `Update` does this automatically. Avoid independently styling the
 textarea with outer borders/padding: apply those around bed and translate mouse
 coordinates in the parent.
 
@@ -280,3 +287,35 @@ go vet ./...
 
 Originally extracted from cxz at commit
 `5ac137a` (`internal/tui/composer_selection.go` and `composer_display.go`).
+
+## Line editing and mouse selection
+
+| Default key | Action/API |
+| --- | --- |
+| Tab | `Indent()`: indent selected logical lines or insert to the next soft-tab stop |
+| Shift+Tab | `Outdent()`: remove up to one indent from affected lines |
+| Alt+Up / Alt+Down | `MoveLines(false/true)`: move current or selected logical lines |
+| Ctrl+D | `Duplicate()`: duplicate selected text, or the current logical line |
+| Enter | Repeat leading indentation when `AutoIndent` is true |
+
+Remap/disable `EditorKeys.Indent`, `Outdent`, `MoveLinesUp`, `MoveLinesDown`, and
+`Duplicate` as usual. Completion acceptance and selected-chip activation take
+precedence. Newline uses the existing `KeyMap.InsertNewline` binding.
+
+`TabWidth` defaults to four (effective range 1–32); these are **space-based** tab
+stops measured in terminal cells. `AutoIndent` defaults to true; pasted text is
+not automatically indented. `IndentCharacters` defaults to a space; a host that
+encodes literal tabs can add its tab marker so auto-indent copies it and outdent
+removes one marker. It does not change the marker's display width. `cmd/bed`
+already configures this for its lossless file representation.
+
+Each line action/newline is one undoable edit, preserving cursor/selection and
+chip metadata. Selections ending at a line start exclude that line. Moving at a
+document boundary does nothing. Duplicate chip IDs are made unique with a
+`-copy-N` suffix; the host still owns external payloads. API errors leave text
+unchanged; keyboard failures emit `EditErrorMsg` for the host to display.
+
+A double click selects a word (Unicode letters/numbers/marks/underscore), spaces,
+or a punctuation run; a triple click selects the logical line including its
+newline. Dragging after those clicks extends by words or lines. Chips remain
+indivisible. `MultiClickInterval` defaults to 400ms; set zero to disable grouping.

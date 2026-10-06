@@ -33,6 +33,7 @@ func newApp(path string) (app, error) {
 		return app{}, err
 	}
 	m := app{editor: bed.New(), document: d, savedText: text, width: 80}
+	m.editor.IndentCharacters = " " + string(d.tab)
 	m.editor.CharLimit = 0
 	m.editor.MaxHeight = 0
 	m.editor.MaxWidth = 0
@@ -84,9 +85,7 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !v.Paste && key.Matches(v, m.editor.KeyMap.Paste) {
 			return m, func() tea.Msg { text, err := clipboard.ReadAll(); return pasted{text, err} }
 		}
-		if v.Type == tea.KeyTab && !v.Paste {
-			v = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{m.document.tab}, Paste: true}
-		} else if v.Type == tea.KeyRunes {
+		if v.Type == tea.KeyRunes {
 			text, err := m.document.encodeInput(string(v.Runes))
 			if err != nil {
 				m.status = err.Error()
@@ -101,6 +100,9 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(v.text), Paste: true})
+	case bed.EditErrorMsg:
+		m.status = "Edit failed: " + v.Err.Error()
+		return m, nil
 	case bed.CopyMsg:
 		if err := clipboard.WriteAll(string(m.document.decode(string(v)))); err != nil {
 			m.status = "Clipboard failed: " + err.Error()
