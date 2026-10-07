@@ -21,7 +21,7 @@ func (m *Model) validateReplacements(edits []Replacement) error {
 		if e.From < 0 || e.To < e.From || e.To > n {
 			return fmt.Errorf("invalid edit range")
 		}
-		e.From, e.To = expandedRange(m.chips, e.From, e.To)
+		e.From, e.To = expandedRange(m.atomicRanges(), e.From, e.To)
 	}
 	slices.SortFunc(es, func(a, b Replacement) int { return a.From - b.From })
 	at := 0

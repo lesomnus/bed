@@ -199,7 +199,7 @@ func (m *Model) CopyFragments() []string {
 	r := []rune(m.Value())
 	for _, s := range m.Selections() {
 		a, b := s.bounds()
-		a, b = expandedRange(m.chips, a, b)
+		a, b = expandedRange(m.atomicRanges(), a, b)
 		if a != b {
 			out = append(out, string(r[a:b]))
 		}

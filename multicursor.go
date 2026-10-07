@@ -93,7 +93,7 @@ func (m *Model) SetSelections(ss []Selection, primary int) error {
 		next = max(next, ss[i].ID)
 		a, b := ss[i].bounds()
 		if a != b {
-			a, b = expandedRange(m.chips, a, b)
+			a, b = expandedRange(m.atomicRanges(), a, b)
 			if ss[i].Anchor < ss[i].Head {
 				ss[i].Anchor, ss[i].Head = a, b
 			} else {
@@ -159,7 +159,7 @@ func (m *Model) installSelections(ss []Selection, primary uint64) {
 	}
 }
 func (m *Model) snapNearest(p int) int {
-	for _, c := range m.chips {
+	for _, c := range m.atomicRanges() {
 		if p > c.From && p < c.To {
 			if p-c.From < c.To-p {
 				return c.From
@@ -269,7 +269,7 @@ func (m *Model) applyEdits(edits []Replacement, collapse bool) error {
 		if e.From < 0 || e.To < e.From || e.To > len(r) {
 			return fmt.Errorf("invalid edit range")
 		}
-		e.From, e.To = expandedRange(m.chips, e.From, e.To)
+		e.From, e.To = expandedRange(m.atomicRanges(), e.From, e.To)
 	}
 	slices.SortStableFunc(edits, func(a, b Replacement) int { return a.From - b.From })
 	merged := make([]Replacement, 0, len(edits))
@@ -489,7 +489,7 @@ func (m *Model) multiKey(k tea.KeyMsg) (bool, tea.Cmd) {
 			}
 			return false, nil
 		}
-		for _, c := range m.chips {
+		for _, c := range m.atomicRanges() {
 			if p > c.From && p < c.To {
 				if p < s.Head {
 					p = c.From
@@ -601,7 +601,7 @@ func (m *Model) renderSelections(view string) string {
 	r := []rune(m.Value())
 	for _, s := range ss {
 		a, b := s.bounds()
-		a, b = expandedRange(m.chips, a, b)
+		a, b = expandedRange(m.atomicRanges(), a, b)
 		for y := range rows {
 			if y+offset >= len(layout) {
 				break
@@ -647,4 +647,31 @@ func (m *Model) validateValue(value string) error {
 		return fmt.Errorf("edit exceeds textarea limits or contains unsupported characters")
 	}
 	return nil
+}
+
+// atomicRanges includes legacy host-owned labels without giving bed ownership
+// of their payloads. It is also used by transactions, not just highlighting.
+func (m *Model) atomicRanges() []Chip {
+	if len(m.AtomicTokens) == 0 {
+		return m.chips
+	}
+	out := slices.Clone(m.chips)
+	value := m.Value()
+	for _, token := range m.AtomicTokens {
+		if token == "" {
+			continue
+		}
+		for offset := 0; offset < len(value); {
+			i := strings.Index(value[offset:], token)
+			if i < 0 {
+				break
+			}
+			i += offset
+			a := utf8.RuneCountInString(value[:i])
+			out = append(out, Chip{Label: token, From: a, To: a + utf8.RuneCountInString(token)})
+			offset = i + len(token)
+		}
+	}
+	slices.SortFunc(out, func(a, b Chip) int { return a.From - b.From })
+	return out
 }

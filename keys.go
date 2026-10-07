@@ -25,7 +25,7 @@ type EditorKeyMap struct {
 func DefaultEditorKeyMap() EditorKeyMap {
 	bind := func(s string) key.Binding { return key.NewBinding(key.WithKeys(s)) }
 	return EditorKeyMap{
-		AddCursorAbove: bind("ctrl+alt+up"), AddCursorBelow: bind("ctrl+alt+down"), ClearCursors: bind("esc"),
+		AddCursorAbove: key.NewBinding(key.WithKeys("alt+ctrl+up", "ctrl+alt+up")), AddCursorBelow: key.NewBinding(key.WithKeys("alt+ctrl+down", "ctrl+alt+down")), ClearCursors: bind("esc"),
 		Indent: bind("tab"), Outdent: bind("shift+tab"), MoveLinesUp: bind("alt+up"), MoveLinesDown: bind("alt+down"), Duplicate: bind("ctrl+d"),
 		ChipActivate: bind("enter"), ChipExpand: bind("alt+enter"),
 		Complete: key.NewBinding(key.WithKeys("ctrl+space", "ctrl+@")), CompletionAccept: key.NewBinding(key.WithKeys("enter", "tab")), CompletionDismiss: bind("esc"),

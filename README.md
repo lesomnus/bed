@@ -388,3 +388,13 @@ with unique unused host-assigned IDs; all validation precedes mutation. Use
 payload callbacks to partially execute during rollback. Hosts must retain payloads
 referenced by undo history and own cleanup; undo restores descriptors and IDs.
 `InsertChip` and explicit chip activation remain primary-only operations.
+
+The file editor's real PTY path is exercised with Ctrl+Alt+Down, typing,
+Undo/Redo, Ctrl+S and Ctrl+Q. Terminal-side interception of modifiers still depends
+on the user's terminal. `BenchmarkMultiInsert` measures insertion plus Undo and
+history reset: on a Ryzen 7 5825U (GOMAXPROCS=2), 1/32/256 cursors took roughly
+0.29/0.98/5.2 ms respectively. This is an editing microbenchmark, not a full-frame
+latency guarantee. The default cursor bound keeps work finite; large-document
+layout remains based on textarea and should be measured before increasing it.
+Legacy `AtomicTokens` also remain indivisible during multi-cursor edits; payload
+ownership stays with the host.

@@ -1,6 +1,7 @@
 package bed
 
 import (
+	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"reflect"
 	"strings"
@@ -185,4 +186,64 @@ func FuzzMultiEditRoundTrip(f *testing.F) {
 			t.Fatal("redo")
 		}
 	})
+}
+
+func TestMultiLegacyAtomicTokens(t *testing.T) {
+	m := multiEditor("[paste]\n[paste]", 0)
+	m.AtomicTokens = []string{"[paste]"}
+	if err := m.SetSelections([]Selection{{Anchor: 7, Head: 7}, {Anchor: 15, Head: 15}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	before := m.snapshot()
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	if m.Value() != "\n" {
+		t.Fatal(m.Value())
+	}
+	m.Undo()
+	if !reflect.DeepEqual(before, m.snapshot()) {
+		t.Fatal("undo lost legacy chips")
+	}
+	m.AddCursor(3)
+	if p := m.PrimarySelection().Head; p > 0 && p < 7 {
+		t.Fatal("cursor inside token", p)
+	}
+}
+func BenchmarkMultiInsert(b *testing.B) {
+	for _, count := range []int{1, 32, 256} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			m := New()
+			m.CharLimit = 0
+			m.MaxHeight = 0
+			m.SetValue(strings.Repeat("abcd\n", count))
+			ss := make([]Selection, count)
+			for i := range ss {
+				ss[i] = Selection{Anchor: 5 * i, Head: 5 * i, Column: -1}
+			}
+			m.SetSelections(ss, 0)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := m.InsertText("X"); err != nil {
+					b.Fatal(err)
+				}
+				m.Undo()
+				m.ClearHistory()
+			}
+		})
+	}
+}
+
+func TestMultiActualTerminalKeyNames(t *testing.T) {
+	m := multiEditor("a\nb\nc", 0)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlDown, Alt: true})
+	if len(m.Selections()) != 2 || m.PrimarySelection().Head != 2 {
+		t.Fatal(m.Selections())
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlDown, Alt: true})
+	if len(m.Selections()) != 3 {
+		t.Fatal(m.Selections())
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp, Alt: true})
+	if len(m.Selections()) != 3 || m.PrimarySelection().Head != 2 {
+		t.Fatal(m.Selections())
+	}
 }
