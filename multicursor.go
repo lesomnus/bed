@@ -62,6 +62,7 @@ func (m *Model) cursorLimit() int {
 // index in the supplied slice, before normalization. Overlaps merge; adjacent
 // nonempty selections stay separate. IDs need not be supplied.
 func (m *Model) SetSelections(ss []Selection, primary int) error {
+	m.syncFeatures()
 	if len(ss) == 0 || primary < 0 || primary >= len(ss) || len(ss) > m.cursorLimit() {
 		return fmt.Errorf("invalid selection set or cursor limit exceeded")
 	}
@@ -219,7 +220,7 @@ func (m *Model) vertical(s Selection, down bool) Selection {
 		p += utf8.RuneCountInString(g.Str())
 		width += g.Width()
 	}
-	s.Head = m.snapNearest(min(p, RowEnd(rows, j)))
+	s.Head = m.snapNearest(min(p, m.rowEnd(rows, j)))
 	return s
 }
 
@@ -471,9 +472,15 @@ func (m *Model) multiKey(k tea.KeyMsg) (bool, tea.Cmd) {
 			rows := m.Rows()
 			j := RowIndex(rows, p)
 			if match(m.EditorKeys.RowEnd, m.EditorKeys.SelectRowEnd) {
-				p = RowEnd(rows, j)
+				p = m.rowEnd(rows, j)
+				if p == s.Head && j+1 < len(rows) {
+					p = m.rowEnd(rows, j+1)
+				}
 			} else {
 				p = rows[j].Start
+				if p == s.Head && j > 0 {
+					p = rows[j-1].Start
+				}
 			}
 		case match(m.KeyMap.LineStart):
 			p = m.logicalEdge(p, false)
@@ -674,4 +681,11 @@ func (m *Model) atomicRanges() []Chip {
 	}
 	slices.SortFunc(out, func(a, b Chip) int { return a.From - b.From })
 	return out
+}
+
+func (m *Model) rowEnd(rows []Row, i int) int {
+	if i+1 < len(rows) && rows[i+1].Line == rows[i].Line {
+		return max(rows[i].Start, GraphemeMove(m.Value(), rows[i].End, false))
+	}
+	return rows[i].End
 }

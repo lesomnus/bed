@@ -83,6 +83,11 @@ func (m *Model) indent(out bool) error {
 	a, b := m.SelectionBounds()
 	if !out && a == b {
 		pos := Position(*m)
+		for _, c := range m.atomicRanges() {
+			if pos > c.From && pos < c.To {
+				return fmt.Errorf("indentation would split an atomic label")
+			}
+		}
 		r := []rune(m.Value())
 		start := pos
 		for start > 0 && r[start-1] != '\n' {

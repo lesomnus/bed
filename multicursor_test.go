@@ -247,3 +247,24 @@ func TestMultiActualTerminalKeyNames(t *testing.T) {
 		t.Fatal(m.Selections())
 	}
 }
+
+func TestLegacyIndentInsideTokenRejects(t *testing.T) {
+	m := multiEditor("[paste]", 0)
+	m.AtomicTokens = []string{"[paste]"}
+	m.SetPosition(3)
+	if m.Indent() == nil || m.Value() != "[paste]" {
+		t.Fatal("indent replaced label", m.Value())
+	}
+}
+
+func TestMultiSetSelectionsAfterDocumentSwitch(t *testing.T) {
+	m := multiEditor("a\nb", 0)
+	m.DocumentKey = "next"
+	if err := m.SetSelections([]Selection{{Anchor: 0, Head: 0}, {Anchor: 2, Head: 2}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	_ = m.View()
+	if len(m.Selections()) != 2 {
+		t.Fatal("render cleared new selections")
+	}
+}
