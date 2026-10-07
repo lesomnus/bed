@@ -299,13 +299,10 @@ func (m *Model) applyEdits(edits []Replacement, collapse bool) error {
 	b.WriteString(string(r[at:]))
 	value := b.String()
 	// A fresh textarea validates without changing the live viewport on rejection.
-	probe := textarea.New()
-	probe.CharLimit = m.CharLimit
-	probe.MaxHeight = m.MaxHeight
-	probe.SetValue(value)
-	if probe.Value() != value {
-		return fmt.Errorf("edit exceeds textarea limits or contains unsupported characters")
+	if err := m.validateValue(value); err != nil {
+		return err
 	}
+
 	ss := m.Selections()
 	primary := m.PrimarySelection().ID
 	remap := func(p int) int {
@@ -567,24 +564,27 @@ func editResultWithCopy(err error, text string) (bool, tea.Cmd) {
 }
 
 // CopyText returns selected fragments in document order, separated by newlines.
-func (m *Model) CopyText() string {
-	var out []string
-	r := []rune(m.Value())
-	for _, s := range m.Selections() {
-		a, b := s.bounds()
-		a, b = expandedRange(m.chips, a, b)
-		if a != b {
-			out = append(out, string(r[a:b]))
-		}
-	}
-	return strings.Join(out, "\n")
-}
+func (m *Model) CopyText() string { return strings.Join(m.CopyFragments(), "\n") }
+
 func (m *Model) CutSelections() error {
 	var edits []Replacement
 	for _, s := range m.Selections() {
 		a, b := s.bounds()
 		if a != b {
 			edits = append(edits, Replacement{a, b, ""})
+		}
+	}
+	if len(edits) == 0 {
+		lines, starts, blocks := m.affectedLines()
+		n := utf8.RuneCountInString(m.Value())
+		for _, b := range blocks {
+			a, end := starts[b.first], n
+			if b.last+1 < len(lines) {
+				end = starts[b.last+1]
+			} else if a > 0 {
+				a--
+			}
+			edits = append(edits, Replacement{a, end, ""})
 		}
 	}
 	return m.ApplyEdits(edits)
@@ -636,4 +636,15 @@ func (m *Model) renderSelections(view string) string {
 		}
 	}
 	return strings.Join(rows, "\n")
+}
+
+func (m *Model) validateValue(value string) error {
+	probe := textarea.New()
+	probe.CharLimit = m.CharLimit
+	probe.MaxHeight = m.MaxHeight
+	probe.SetValue(value)
+	if probe.Value() != value {
+		return fmt.Errorf("edit exceeds textarea limits or contains unsupported characters")
+	}
+	return nil
 }

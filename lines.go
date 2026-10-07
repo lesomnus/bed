@@ -76,7 +76,7 @@ func (m *Model) Indent() error  { return m.indent(false) }
 func (m *Model) Outdent() error { return m.indent(true) }
 func (m *Model) indent(out bool) error {
 	if len(m.Selections()) > 1 {
-		return fmt.Errorf("line command does not yet support multiple cursors")
+		return m.multiIndent(out)
 	}
 	done := m.beginEdit("")
 	defer done()
@@ -159,7 +159,7 @@ func (m *Model) applyLineEdits(edits []textEdit) error {
 // A selection ending at a line start excludes that line. Document edges are no-ops.
 func (m *Model) MoveLines(down bool) error {
 	if len(m.Selections()) > 1 {
-		return fmt.Errorf("line command does not yet support multiple cursors")
+		return m.multiMoveLines(down)
 	}
 	done := m.beginEdit("")
 	defer done()
@@ -214,7 +214,7 @@ func (m *Model) MoveLines(down bool) error {
 // Cloned chips receive distinct IDs derived from their original IDs.
 func (m *Model) Duplicate() error {
 	if len(m.Selections()) > 1 {
-		return fmt.Errorf("line command does not yet support multiple cursors")
+		return m.multiDuplicate()
 	}
 	done := m.beginEdit("")
 	defer done()

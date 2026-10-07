@@ -1,6 +1,6 @@
 # Multi-cursor editing plan
 
-Status: phase 1 implemented; phases 2–4 in progress. Updated: 2026-10-07.
+Status: phases 1–2 implemented; phases 3–4 in progress. Updated: 2026-10-07.
 
 ## Goal and delivery
 

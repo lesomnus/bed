@@ -349,8 +349,21 @@ to one cursor. Singular selection queries describe the primary only.
 same decorations. Secondary cursors share the primary blink state. Adding or
 removing cursors breaks typing groups without adding a text undo record.
 
-In the first delivery, line commands reject multi-cursor use explicitly;
-completion/ghost are disabled for multiple cursors. Chip activation, insertion
-and expansion remain primary-only. `CopyText` joins selected fragments with
-newlines; `CutSelections` removes them atomically. Empty multi-cursor copy/cut
-currently does nothing. These restrictions are extended in subsequent phases.
+Line commands operate on distinct affected logical lines. Indent/outdent applies
+once per line. Move merges adjacent blocks; if any block touches the requested
+edge the entire move is a no-op. With multiple cursors Duplicate clones complete
+affected line blocks and moves selections into the copies; single-cursor selected
+text duplication retains its existing behavior. Copied chips get `-copy-N` IDs
+and copy their embedded expansion text. Hosts using external payloads must map
+those new IDs explicitly; bed does not duplicate host-owned objects.
+
+`CopyFragments`/`CopyText` use selected fragments in document order. If every
+cursor is empty, they copy distinct logical lines. Mixed sets ignore empty ranges.
+`CutSelections` removes the same targets atomically. `PasteFragments(fragments,
+fallback)` distributes fragments only when counts match the selection count;
+otherwise it broadcasts fallback verbatim. Ordinary paste always broadcasts.
+Clipboard contents are plain labels; payload export is a separate host concern.
+
+Completion/ghost remain single-target until explicitly enabled through the
+multi-target provider APIs in the next phase. Chip activation and InsertChip
+remain primary-only.
