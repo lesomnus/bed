@@ -235,7 +235,11 @@ func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 		if handled, cmd := m.featureKey(k); handled {
 			return true, cmd
 		}
+		before, hadCompletion := m.Value(), m.completion != nil
 		if handled, cmd := m.multiKey(k); handled {
+			if m.Value() != before {
+				cmd = tea.Batch(cmd, m.afterInput(k, hadCompletion))
+			}
 			return true, cmd
 		}
 		if handled, cmd := m.chipKey(k); handled {

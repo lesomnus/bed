@@ -40,7 +40,11 @@ func (m *Model) Selections() []Selection {
 	if m.SelectionValid() {
 		a = m.selection.anchor
 	}
-	return []Selection{{Anchor: a, Head: p, ID: 1, Column: -1}}
+	id := m.primaryCursor
+	if id == 0 {
+		id = 1
+	}
+	return []Selection{{Anchor: a, Head: p, ID: id, Column: -1}}
 }
 func (m *Model) PrimarySelection() Selection {
 	ss := m.Selections()

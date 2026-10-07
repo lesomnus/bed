@@ -112,3 +112,18 @@ func TestMultiChipInsertionExpansionAndRollback(t *testing.T) {
 		t.Fatal("invalid IDs mutated")
 	}
 }
+
+func TestMultiCompletionTriggerAndStablePrimary(t *testing.T) {
+	m := multiEditor("a\nb", 1, 3)
+	m.CompletionTriggers = "@"
+	m.MultiCompletionProvider = func(context.Context, Request) (CompletionResult, error) { return CompletionResult{}, nil }
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("@")})
+	if m.completion == nil || !m.completion.loading {
+		t.Fatal("multi trigger did not request")
+	}
+	id := m.PrimarySelection().ID
+	m.ClearSecondaryCursors()
+	if m.PrimarySelection().ID != id {
+		t.Fatal("primary identity changed")
+	}
+}
