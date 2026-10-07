@@ -210,6 +210,9 @@ func GraphemeMove(value string, pos int, forward bool) int {
 // the same code the unshifted key would use, so a selection can never cover
 // something the cursor could not have reached by itself.
 func (m *Model) ExtendSelection(move func()) {
+	m.selectionRevision++
+	m.Close()
+	m.cursors = nil
 	m.BreakUndoGroup()
 	if !m.SelectionValid() {
 		m.selection = &selection{value: m.Model.Value(), document: m.DocumentKey, anchor: Position(*m)}

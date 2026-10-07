@@ -164,7 +164,7 @@ func (m *Model) CompletionMouse(v tea.MouseMsg) bool {
 }
 func (m *Model) afterInput(msg tea.Msg, hadCompletion bool) tea.Cmd {
 	k, ok := msg.(tea.KeyMsg)
-	if !ok || !m.Focused() || m.CompletionProvider == nil {
+	if !ok || !m.Focused() || (m.CompletionProvider == nil && m.MultiCompletionProvider == nil) {
 		return nil
 	}
 	if !(k.Type == tea.KeyRunes || k.Type == tea.KeySpace || key.Matches(k, m.KeyMap.DeleteCharacterBackward, m.KeyMap.DeleteCharacterForward)) {

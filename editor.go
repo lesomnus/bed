@@ -42,6 +42,8 @@ type Model struct {
 	textarea.Model
 	EditorKeys                                                      EditorKeyMap
 	CompletionProvider                                              CompletionProvider
+	MultiCompletionProvider                                         CompletionProvider
+	MultiGhostProvider                                              GhostEditProvider
 	GhostProvider                                                   GhostProvider
 	CompletionTriggers                                              string
 	CompletionColumns, CompletionRows                               int

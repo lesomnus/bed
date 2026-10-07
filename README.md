@@ -364,6 +364,27 @@ fallback)` distributes fragments only when counts match the selection count;
 otherwise it broadcasts fallback verbatim. Ordinary paste always broadcasts.
 Clipboard contents are plain labels; payload export is a separate host concern.
 
-Completion/ghost remain single-target until explicitly enabled through the
-multi-target provider APIs in the next phase. Chip activation and InsertChip
-remain primary-only.
+Existing completion/ghost providers stay single-target. Set
+`MultiCompletionProvider` to opt in: it receives one `Request` containing the
+captured selections and revision. Return `CompletionResult.Edits[i]` with the
+explicit replacements for `Items[i]`; every candidate is validated and copied.
+The primary cursor controls the candidate UI; acceptance is one atomic edit.
+Do not invoke the provider separately per cursor.
+
+`MultiGhostProvider` returns explicit insertion edits, or use `SetGhostEdits`.
+Each preview appears at its insertion point, shifts the rendered text, and is
+clipped to the viewport. Multiline previews show the first line and `↵`;
+acceptance inserts all text. Previews never change the buffer. Replacement ranges
+are not allowed for ghost previews. Escape dismisses previews before cursors.
+
+Changing text, cursor sets, document, or undo state cancels outstanding results.
+After assigning provider fields, call `ProvidersChanged()` to invalidate pending
+work even when the text and cursor are unchanged. Providers must honor context
+cancellation. Requests include detached selections; results are copied on install.
+
+`InsertChips(chips)` requires one descriptor per selection in document order,
+with unique unused host-assigned IDs; all validation precedes mutation. Use
+`ExpandChips(ids)` / `RemoveChips(ids)` for atomic batches. There are no external
+payload callbacks to partially execute during rollback. Hosts must retain payloads
+referenced by undo history and own cleanup; undo restores descriptors and IDs.
+`InsertChip` and explicit chip activation remain primary-only operations.
