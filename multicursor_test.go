@@ -268,3 +268,54 @@ func TestMultiSetSelectionsAfterDocumentSwitch(t *testing.T) {
 		t.Fatal("render cleared new selections")
 	}
 }
+
+func BenchmarkMultiLargeDocument(b *testing.B) {
+	for _, withChips := range []bool{false, true} {
+		b.Run(fmt.Sprint("chips=", withChips), func(b *testing.B) {
+			m := New()
+			m.CharLimit = 0
+			m.MaxHeight = 0
+			m.SetValue(strings.Repeat("[x] data\n", 2000))
+			var chips []Chip
+			var ss []Selection
+			for i := 0; i < 256; i++ {
+				pos := i * 7 * 9
+				ss = append(ss, Selection{Anchor: pos + 3, Head: pos + 3, Column: -1})
+				if withChips {
+					chips = append(chips, Chip{ID: fmt.Sprint(i), Label: "[x]", Text: "payload", From: pos, To: pos + 3})
+				}
+			}
+			if err := m.SetChips(chips); err != nil {
+				b.Fatal(err)
+			}
+			if err := m.SetSelections(ss, 0); err != nil {
+				b.Fatal(err)
+			}
+			m.ClearHistory()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := m.InsertText("X"); err != nil {
+					b.Fatal(err)
+				}
+				m.Undo()
+				m.ClearHistory()
+			}
+		})
+	}
+}
+
+func TestMultiAdjacentReverseReplacement(t *testing.T) {
+	m := multiEditor("abcd", 0)
+	m.SetSelections([]Selection{{Anchor: 2, Head: 0}, {Anchor: 4, Head: 2}}, 1)
+	before := m.snapshot()
+	if err := m.InsertText("X"); err != nil {
+		t.Fatal(err)
+	}
+	if m.Value() != "XX" || len(m.Selections()) != 2 || m.Selections()[0].Head != 1 || m.Selections()[1].Head != 2 {
+		t.Fatal(m.Value(), m.Selections())
+	}
+	m.Undo()
+	if !reflect.DeepEqual(before, m.snapshot()) {
+		t.Fatal("undo")
+	}
+}

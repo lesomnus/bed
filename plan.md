@@ -1,6 +1,24 @@
 # Multi-cursor editing plan
 
-Status: phases 1–3 implemented; phase 4 in progress. Updated: 2026-10-07.
+Status: bed phases 1–3 and phase 4 integration/polish implemented. Updated: 2026-10-07.
+
+Delivery: bed changes are on main. cxz adoption is submitted in
+[PR #116](https://github.com/lesomnus/cxz/pull/116), not yet merged.
+The implementation uses Selection / Replacement, a default 256-cursor limit,
+explicit CompletionResult.Edits and MultiGhostProvider, and host-supplied chip
+IDs (no rollback-sensitive payload callbacks). Ctrl+Alt bindings accept Bubble
+Tea's `alt+ctrl+...` spelling. Secondary cursors use RenderSelection.
+
+Validation completed: bed full Go/race tests; 2,355 fuzz round trips; Linux file
+editor PTY input, Undo/Redo, save, quit and reopen; Windows file-editor build.
+Editing benchmarks cover 1/32/256 cursors and 2,000-line documents with 256 chips.
+cxz TUI integration/race tests and Windows CLI build passed. The full cxz suite
+has an environment-limited TestLifecycle failure, also observed on clean base
+main; the PR records it for CI verification in a fresh runner.
+
+Remaining deployment step: review/merge PR #116. This plan does not authorize
+automatic merging. No search, occurrence matching or rectangular selection was
+added. Large-document layout still uses textarea; benchmark results are in README.
 
 ## Goal and delivery
 

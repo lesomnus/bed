@@ -325,6 +325,9 @@ func (m *Model) applyEdits(edits []Replacement, collapse bool) error {
 		return p + delta
 	}
 	for i := range ss {
+		if collapse {
+			ss[i].Head = max(ss[i].Head, ss[i].Anchor)
+		}
 		ss[i].Head = remap(ss[i].Head)
 		ss[i].Anchor = remap(ss[i].Anchor)
 		ss[i].Column = -1

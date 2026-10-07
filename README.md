@@ -398,3 +398,9 @@ latency guarantee. The default cursor bound keeps work finite; large-document
 layout remains based on textarea and should be measured before increasing it.
 Legacy `AtomicTokens` also remain indivisible during multi-cursor edits; payload
 ownership stays with the host.
+
+`BenchmarkMultiLargeDocument` covers 2,000 lines and 256 cursors. With
+GOMAXPROCS=1 on the same host, insertion + Undo + history reset took about 43 ms
+without chips and 46 ms with 256 chips. These measurements include restoring the
+snapshot and repositioning textarea's viewport; they should not be interpreted
+as a single keystroke or full rendering benchmark.
