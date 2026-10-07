@@ -36,8 +36,14 @@ func Position(in Model) int {
 	return pos + li.StartColumn + li.ColumnOffset
 }
 func (m *Model) SetPosition(pos int) {
-	m.FollowCursor()
+	m.cursors = nil
+	m.selectionRevision++
+	m.Close()
 	m.BreakUndoGroup()
+	m.setPosition(pos)
+}
+func (m *Model) setPosition(pos int) {
+	m.FollowCursor()
 	r := []rune(m.Model.Value())
 	pos = max(0, min(len(r), pos))
 	old := Position(*m)
@@ -224,6 +230,9 @@ func (m *Model) HandleKey(k tea.KeyMsg) (bool, tea.Cmd) {
 		m.FollowCursor()
 		m.click = mouseClick{}
 		if handled, cmd := m.featureKey(k); handled {
+			return true, cmd
+		}
+		if handled, cmd := m.multiKey(k); handled {
 			return true, cmd
 		}
 		if handled, cmd := m.chipKey(k); handled {
@@ -466,6 +475,12 @@ func (m *Model) HandleMouse(v tea.MouseMsg) bool {
 		return false
 	}
 	point := m.Point(max(0, x), y)
+	if m.AddCursorMouse != nil && m.AddCursorMouse(v) {
+		_ = m.AddCursor(m.snapNearest(point))
+		return true
+	}
+	m.cursors = nil
+	m.selectionRevision++
 	top, detached := m.ScrollOffset(m.Rows()), m.detached
 	defer func() { m.viewTop, m.detached, m.viewDocument = top, detached, m.DocumentKey }()
 	// The event-loop owner dispatches Focus's timer command. Avoid creating and
@@ -488,6 +503,12 @@ func (m *Model) HandleMouse(v tea.MouseMsg) bool {
 	return true
 }
 func (m *Model) RenderSelection(view string) string {
+	if len(m.Selections()) > 1 {
+		return m.renderSelections(view)
+	}
+	return m.renderSelection(view)
+}
+func (m *Model) renderSelection(view string) string {
 
 	a, b := m.SelectionBounds()
 	if a == b {

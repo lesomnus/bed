@@ -103,26 +103,16 @@ func mappedChips(chips []Chip, a, b, n int) []Chip {
 	return out
 }
 func (m *Model) replaceRange(a, b int, text string) error {
-	m.syncFeatures()
-	r := []rune(m.Value())
-	if a < 0 || b < a || b > len(r) {
-		return fmt.Errorf("invalid edit range")
-	}
+	many := len(m.Selections()) > 1
 	a, b = expandedRange(m.chips, a, b)
-	value := string(r[:a]) + text + string(r[b:])
-	old, pos := m.Value(), Position(*m)
-	m.Model.SetValue(value)
-	if m.Model.Value() != value {
-		m.Model.SetValue(old)
-		m.SetPosition(pos)
-		return fmt.Errorf("edit exceeds textarea limits or contains unsupported characters")
+	if err := m.applyEdits([]Replacement{{a, b, text}}, false); err != nil {
+		return err
 	}
-	m.chips = mappedChips(m.chips, a, b, utf8.RuneCountInString(text))
-	m.chipVersion++
-	m.featureText = value
-	m.selection = nil
-	m.layout = nil
-	m.SetPosition(a + utf8.RuneCountInString(text))
+	if !many {
+		m.selection = nil
+		m.cursors = nil
+		m.setPosition(a + utf8.RuneCountInString(text))
+	}
 	m.chipCursor = Position(*m)
 	return nil
 }
@@ -244,6 +234,12 @@ func (m *Model) SetChips(chips []Chip) error {
 	defer done()
 	m.chips = next
 	m.chipVersion++
-	m.SetPosition(Position(*m))
+	ss := m.Selections()
+	primary := m.PrimarySelection().ID
+	for i := range ss {
+		ss[i].Anchor = m.snapNearest(ss[i].Anchor)
+		ss[i].Head = m.snapNearest(ss[i].Head)
+	}
+	m.installSelections(ss, primary)
 	return nil
 }

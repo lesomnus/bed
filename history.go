@@ -9,6 +9,8 @@ import (
 )
 
 type editSnapshot struct {
+	selections           []Selection
+	primary              uint64
 	chips                []Chip
 	text                 string
 	cursor, anchor, head int
@@ -23,7 +25,7 @@ type editHistory struct {
 }
 
 func (m *Model) snapshot() editSnapshot {
-	s := editSnapshot{text: m.Value(), cursor: Position(*m), chips: slices.Clone(m.chips)}
+	s := editSnapshot{selections: m.Selections(), primary: m.PrimarySelection().ID, text: m.Value(), cursor: Position(*m), chips: slices.Clone(m.chips)}
 	if m.SelectionValid() {
 		s.selected = true
 		s.anchor = m.selection.anchor
@@ -61,6 +63,8 @@ func (m *Model) restoreEdit(s editSnapshot) {
 	if s.selected {
 		m.selection = &selection{value: s.text, document: m.DocumentKey, anchor: s.anchor, head: s.head}
 	}
+	m.installSelections(s.selections, s.primary)
+	m.selectionRevision++
 	m.history.current = m.Value()
 }
 
@@ -130,10 +134,14 @@ func (m *Model) beginEdit(kind string) func() {
 		if m.historyClock != nil {
 			now = m.historyClock()
 		}
-		merge := kind != "" && kind == h.kind && now.Sub(h.at) >= 0 && now.Sub(h.at) <= m.UndoGroupDelay && len(h.undo) > 0 && !before.selected
+		anySelected := false
+		for _, s := range before.selections {
+			anySelected = anySelected || s.Anchor != s.Head
+		}
+		merge := !anySelected && kind != "" && kind == h.kind && now.Sub(h.at) >= 0 && now.Sub(h.at) <= m.UndoGroupDelay && len(h.undo) > 0 && !before.selected
 		if merge {
 			last := h.undo[len(h.undo)-1].after
-			merge = last.cursor == before.cursor && last.text == before.text && !last.selected
+			merge = slices.Equal(last.selections, before.selections) && last.cursor == before.cursor && last.text == before.text && !last.selected
 		}
 		if merge {
 			h.undo[len(h.undo)-1].after = after
@@ -147,6 +155,7 @@ func (m *Model) beginEdit(kind string) func() {
 		total := 0
 		for i := len(h.undo) - 1; i >= 0; i-- {
 			e := h.undo[i]
+			total += 40 * (len(e.before.selections) + len(e.after.selections))
 			total += len(e.before.text) + len(e.after.text)
 			for _, c := range append(slices.Clone(e.before.chips), e.after.chips...) {
 				total += len(c.ID) + len(c.Label) + len(c.Text)
@@ -180,7 +189,6 @@ func (m *Model) editKind(msg tea.Msg) string {
 func (m *Model) InsertString(text string) {
 	done := m.beginEdit("")
 	defer done()
-	m.DeleteSelection()
-	m.Model.InsertString(text)
+	_ = m.InsertText(text)
 }
 func (m *Model) InsertRune(r rune) { m.InsertString(string(r)) }

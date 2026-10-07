@@ -319,3 +319,38 @@ A double click selects a word (Unicode letters/numbers/marks/underscore), spaces
 or a punctuation run; a triple click selects the logical line including its
 newline. Dragging after those clicks extends by words or lines. Chips remain
 indivisible. `MultiClickInterval` defaults to 400ms; set zero to disable grouping.
+
+## Multiple cursors
+
+Alt+left-click adds/promotes a cursor. Ctrl+Alt+Up/Down adds a cursor on the
+adjacent visual row; short rows retain the desired column for the next row.
+Escape dismisses completion/ghost first, then retains only the primary range.
+Plain click/drag starts a single selection. Terminal/OS shortcuts can intercept
+modifiers; configure `EditorKeys.AddCursorAbove`, `AddCursorBelow`, `ClearCursors`
+and `AddCursorMouse` (nil disables the mouse gesture) when needed.
+
+`Selections()` returns a detached document-ordered slice of directed rune ranges;
+`PrimarySelection()` identifies the active range. `SetSelections(ranges, primaryIndex)`
+validates the entire set. Use `Column: -1` for an initially unspecified desired
+visual column. `AddCursor`, `AddCursorVertical`, and `ClearSecondaryCursors` are
+also available. `CursorLimit` defaults to 256 (hard cap 4096; zero permits one).
+Overlapping ranges and duplicate cursors merge; adjacent nonempty ranges remain.
+
+Typing, paste, newline, deletion and navigation affect every cursor. Each edit
+is atomic, including chip expansion and limit validation, and one Undo restores
+all ranges. `InsertText` broadcasts and returns validation errors; legacy
+`InsertString`/`InsertRune` broadcast too but cannot return errors. `ApplyEdits`
+applies explicit replacements against one document snapshot, rejects conflicting
+replacements, and remaps all cursors. `ReplaceRange` targets its specified range;
+with multiple cursors it remaps all ranges. `SetPosition` and `SetValue` collapse
+to one cursor. Singular selection queries describe the primary only.
+
+`RenderSelection` includes secondary cursors, so RawView integrations use the
+same decorations. Secondary cursors share the primary blink state. Adding or
+removing cursors breaks typing groups without adding a text undo record.
+
+In the first delivery, line commands reject multi-cursor use explicitly;
+completion/ghost are disabled for multiple cursors. Chip activation, insertion
+and expansion remain primary-only. `CopyText` joins selected fragments with
+newlines; `CutSelections` removes them atomically. Empty multi-cursor copy/cut
+currently does nothing. These restrictions are extended in subsequent phases.

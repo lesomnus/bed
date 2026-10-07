@@ -19,6 +19,13 @@ import (
 // Like textarea, shallow copies are intended for Bubble Tea Update, not for
 // maintaining independent documents; create a new Model for each editor.
 type Model struct {
+	// CursorLimit bounds active cursors (default 256, hard maximum 4096).
+	CursorLimit int
+	// AddCursorMouse can override Alt+left-click; nil disables cursor addition.
+	AddCursorMouse                               func(tea.MouseMsg) bool
+	cursors                                      []Selection
+	primaryCursor, nextCursor, selectionRevision uint64
+	cursorText, cursorDocument                   string
 	// IndentCharacters identifies leading indentation; hosts may add an encoded tab rune.
 	IndentCharacters string
 	// TabWidth controls space-based tab stops; AutoIndent repeats leading spaces.
@@ -77,6 +84,8 @@ func New() Model {
 	m.KeyMap.WordForward = key.NewBinding(key.WithKeys("ctrl+right", "alt+right", "alt+f"))
 	m.EditorKeys = DefaultEditorKeyMap()
 	m.TabWidth = 4
+	m.CursorLimit = 256
+	m.AddCursorMouse = func(v tea.MouseMsg) bool { return v.Alt }
 	m.MultiClickInterval = 400 * time.Millisecond
 	m.AutoIndent = true
 	m.IndentCharacters = " "
@@ -99,7 +108,12 @@ func New() Model {
 
 func (m *Model) Blur() { m.Close(); m.Model.Blur() }
 
-func (m *Model) ClearSelection() { m.selection = nil }
+func (m *Model) ClearSelection() {
+	m.selection = nil
+	m.cursors = nil
+	m.selectionRevision++
+	m.Close()
+}
 func (m *Model) SetValue(value string) {
 	m.ClearSelection()
 	m.detached = false
@@ -148,6 +162,15 @@ func (m Model) UpdateText(msg tea.Msg) (Model, tea.Cmd) {
 	return m, tea.Batch(cmd, m.afterInput(msg, had))
 }
 func (m *Model) updateText(msg tea.Msg) tea.Cmd {
+	if k, ok := msg.(tea.KeyMsg); ok && m.Focused() {
+		if handled, cmd := m.multiKey(k); handled {
+			return cmd
+		}
+	}
+	if p, ok := msg.(multiPasteMsg); ok {
+		_, cmd := editResult(m.InsertText(string(p)))
+		return cmd
+	}
 	if _, ok := msg.(tea.KeyMsg); ok && m.Focused() {
 		m.FollowCursor()
 	}

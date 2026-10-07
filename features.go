@@ -17,6 +17,8 @@ type Request struct {
 	ID             uint64
 	Document, Text string
 	Cursor         int
+	Revision       uint64
+	Selections     []Selection
 }
 type CompletionItem struct{ Label, Detail, InsertText string }
 type CompletionResult struct {
@@ -67,6 +69,8 @@ func (m *Model) syncFeatures() {
 		m.DismissGhost()
 		// Edits made through bed reconcile chips before this baseline changes.
 		// Direct embedded textarea mutation cannot safely retain positional metadata.
+		m.cursors = nil
+		m.selectionRevision++
 		m.chips = nil
 		m.chipVersion++
 		m.featureDocument = m.DocumentKey
@@ -79,10 +83,10 @@ var featureRequestID atomic.Uint64
 func (m *Model) request() Request {
 	m.syncFeatures()
 	m.requestID = featureRequestID.Add(1)
-	return Request{m.requestID, m.DocumentKey, m.Value(), Position(*m)}
+	return Request{ID: m.requestID, Document: m.DocumentKey, Text: m.Value(), Cursor: Position(*m), Revision: m.selectionRevision, Selections: m.Selections()}
 }
 func (m *Model) current(r Request) bool {
-	return r.Document == m.DocumentKey && r.Text == m.Value() && r.Cursor == Position(*m)
+	return r.Revision == m.selectionRevision && r.Document == m.DocumentKey && r.Text == m.Value() && r.Cursor == Position(*m)
 }
 func (m *Model) DismissCompletions() {
 	if m.completion != nil && m.completion.cancel != nil {
@@ -103,7 +107,7 @@ func tickFeature(id uint64) tea.Cmd {
 	return tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg { return featureTick{id} })
 }
 func (m *Model) RequestCompletions(ctx context.Context) tea.Cmd {
-	if m.CompletionProvider == nil {
+	if len(m.Selections()) > 1 || m.CompletionProvider == nil {
 		return nil
 	}
 	r := m.request()
@@ -115,7 +119,7 @@ func (m *Model) RequestCompletions(ctx context.Context) tea.Cmd {
 	return tea.Batch(func() tea.Msg { v, err := provider(ctx, r); return completionResponse{r, v, err} }, tickFeature(r.ID))
 }
 func (m *Model) RequestGhost(ctx context.Context) tea.Cmd {
-	if m.GhostProvider == nil || Position(*m) != len([]rune(m.Value())) {
+	if len(m.Selections()) > 1 || m.GhostProvider == nil || Position(*m) != len([]rune(m.Value())) {
 		return nil
 	}
 	r := m.request()
@@ -129,6 +133,9 @@ func (m *Model) RequestGhost(ctx context.Context) tea.Cmd {
 
 // SetCompletions supplies already available candidates; providers are optional.
 func (m *Model) SetCompletions(result CompletionResult) bool {
+	if len(m.Selections()) > 1 {
+		return false
+	}
 	r := m.request()
 	m.DismissCompletions()
 	m.DismissGhost()
@@ -146,6 +153,9 @@ func (m *Model) installCompletions(r Request, result CompletionResult) bool {
 
 // SetGhost previews insertion at the document end. No buffer changes occur until acceptance.
 func (m *Model) SetGhost(text string) bool {
+	if len(m.Selections()) > 1 {
+		return false
+	}
 	r := m.request()
 	m.DismissGhost()
 	m.DismissCompletions()

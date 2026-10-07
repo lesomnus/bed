@@ -132,7 +132,7 @@ func (m app) View() string {
 }
 func run(args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Println("Usage: bed <file>\nCtrl+S: save · Ctrl+Q: quit (press twice to discard unsaved changes)")
+		fmt.Println("Usage: bed <file>\nCtrl+S: save · Ctrl+Q: quit (press twice to discard unsaved changes)\nAlt+click: add cursor · Ctrl+Alt+Up/Down: add cursor on adjacent visual row · Esc: keep primary")
 		return nil
 	}
 	if len(args) != 1 {

@@ -6,6 +6,7 @@ import "github.com/charmbracelet/bubbles/key"
 // actions remain configurable through Model.KeyMap. A zero map disables these
 // actions; individual bindings support SetKeys and SetEnabled.
 type EditorKeyMap struct {
+	AddCursorAbove, AddCursorBelow, ClearCursors                        key.Binding
 	Indent, Outdent, MoveLinesUp, MoveLinesDown, Duplicate              key.Binding
 	ChipActivate, ChipExpand                                            key.Binding
 	Complete, CompletionAccept, CompletionDismiss                       key.Binding
@@ -24,6 +25,7 @@ type EditorKeyMap struct {
 func DefaultEditorKeyMap() EditorKeyMap {
 	bind := func(s string) key.Binding { return key.NewBinding(key.WithKeys(s)) }
 	return EditorKeyMap{
+		AddCursorAbove: bind("ctrl+alt+up"), AddCursorBelow: bind("ctrl+alt+down"), ClearCursors: bind("esc"),
 		Indent: bind("tab"), Outdent: bind("shift+tab"), MoveLinesUp: bind("alt+up"), MoveLinesDown: bind("alt+down"), Duplicate: bind("ctrl+d"),
 		ChipActivate: bind("enter"), ChipExpand: bind("alt+enter"),
 		Complete: key.NewBinding(key.WithKeys("ctrl+space", "ctrl+@")), CompletionAccept: key.NewBinding(key.WithKeys("enter", "tab")), CompletionDismiss: bind("esc"),

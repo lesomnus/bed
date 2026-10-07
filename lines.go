@@ -75,6 +75,9 @@ func (m *Model) selectedLines() ([]string, []int, int, int) {
 func (m *Model) Indent() error  { return m.indent(false) }
 func (m *Model) Outdent() error { return m.indent(true) }
 func (m *Model) indent(out bool) error {
+	if len(m.Selections()) > 1 {
+		return fmt.Errorf("line command does not yet support multiple cursors")
+	}
 	done := m.beginEdit("")
 	defer done()
 	a, b := m.SelectionBounds()
@@ -155,6 +158,9 @@ func (m *Model) applyLineEdits(edits []textEdit) error {
 // MoveLines moves the current logical line or all lines touched by the selection.
 // A selection ending at a line start excludes that line. Document edges are no-ops.
 func (m *Model) MoveLines(down bool) error {
+	if len(m.Selections()) > 1 {
+		return fmt.Errorf("line command does not yet support multiple cursors")
+	}
 	done := m.beginEdit("")
 	defer done()
 	lines, starts, first, last := m.selectedLines()
@@ -207,6 +213,9 @@ func (m *Model) MoveLines(down bool) error {
 // Duplicate duplicates the selected text, or the current logical line when empty.
 // Cloned chips receive distinct IDs derived from their original IDs.
 func (m *Model) Duplicate() error {
+	if len(m.Selections()) > 1 {
+		return fmt.Errorf("line command does not yet support multiple cursors")
+	}
 	done := m.beginEdit("")
 	defer done()
 	a, b := m.SelectionBounds()
@@ -251,6 +260,16 @@ func (m *Model) Duplicate() error {
 
 // InsertNewline optionally repeats leading spaces; pasted text is never reindented.
 func (m *Model) InsertNewline() error {
+	if len(m.Selections()) > 1 {
+		var es []Replacement
+		for _, s := range m.Selections() {
+			a, b := s.bounds()
+			es = append(es, Replacement{a, b, m.newlineAt(a)})
+		}
+		done := m.beginEdit("")
+		defer done()
+		return m.applyEdits(es, true)
+	}
 	done := m.beginEdit("")
 	defer done()
 	a, b := m.SelectionBounds()
